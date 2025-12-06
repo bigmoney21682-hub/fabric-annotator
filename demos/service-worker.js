@@ -1,14 +1,17 @@
 const CACHE_NAME = 'fieldar-cache-v1';
 const urlsToCache = [
-  '/fabric-annotator/fieldar.html',
-  '/fabric-annotator/manifest.json',
-  '/fabric-annotator/icons/icon-192.png',
-  '/fabric-annotator/icons/icon-512.png',
-  '/fabric-annotator/fabric.min.js'
+  './fieldar.html',
+  './manifest.json',
+  './fab-annotator.js',
+  './fab-annotator.css',
+  './icons/Blue_GCPA-removebg-preview.png',
+  './icons/Blue_He_Comp.png'
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+  );
 });
 
 self.addEventListener('activate', event => {
@@ -20,5 +23,7 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  event.respondWith(caches.match(event.request).then(response => response || fetch(event.request)));
+  event.respondWith(
+    caches.match(event.request).then(response => response || fetch(event.request))
+  );
 });
