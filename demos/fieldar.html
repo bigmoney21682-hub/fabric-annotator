@@ -1,118 +1,88 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FieldAR Annotator</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FieldAR Annotator</title>
 
-  <!-- Manifest for PWA -->
-  <link rel="manifest" href="./manifest.json">
+<!-- Optional: Manifest for PWA -->
+<link rel="manifest" href="./manifest.json">
 
-  <!-- Annotator Styles -->
-  <link rel="stylesheet" href="./dist/fab-annotator.css">
+<!-- Fabric.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
 
-  <!-- Annotator Script -->
-  <script src="./dist/fab-annotator.js"></script>
-
-  <!-- Register Service Worker -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js')
-        .then(() => console.log('Service Worker Registered!'))
-        .catch(err => console.error('Service Worker Error:', err));
-    }
-  </script>
-
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: #f0f0f0;
-      font-family: Arial, sans-serif;
-      text-align: center;
-    }
-    #main-container {
-      margin: 10px auto;
-      max-width: 95vw;
-    }
-    canvas {
-      border: 1px solid #ccc;
-      max-width: 95vw;
-      display: block;
-      margin: 0 auto;
-      background: #fff;
-    }
-    .toolbar {
-      margin-top: 10px;
-    }
-    .toolbar button {
-      padding: 10px 14px;
-      margin: 4px;
-      font-size: 14px;
-    }
-  </style>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#f0f0f0; font-family: Arial, sans-serif; text-align:center; }
+  canvas { display:block; margin:0 auto; border:1px solid #ccc; }
+  .toolbar { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.8); padding:10px; text-align:center; z-index:999; }
+  .toolbar button { margin:4px; padding:10px 16px; font-size:16px; font-weight:bold; border:none; border-radius:8px; cursor:pointer; }
+  .toolbar button:hover { opacity:0.8; }
+</style>
 </head>
-
 <body>
-  <div id="main-container">
-    <h2>FieldAR Annotator</h2>
 
-    <!-- Canvas -->
-    <canvas id="main-canvas" width="800" height="600"></canvas>
+<input type="file" id="pickFile" accept="image/*" style="display:none">
 
-    <!-- Toolbar -->
-    <div class="toolbar">
-      <button onclick="pickFile.click()">Choose Photo</button>
-      <button onclick="addRect()">Rect</button>
-      <button onclick="addCircle()">Circle</button>
-      <button onclick="addArrow()">Arrow</button>
-      <button onclick="addText()">Text</button>
-      <button onclick="exportJSON()">Export JSON</button>
-      <button onclick="canvas.clear()">Clear</button>
-    </div>
+<canvas id="main-canvas" width="800" height="600"></canvas>
 
-    <!-- Hidden File Picker -->
-    <input type="file" id="pickFile" accept="image/*" style="display:none">
-  </div>
+<div class="toolbar">
+  <button onclick="addRect()">Rect</button>
+  <button onclick="addCircle()">Circle</button>
+  <button onclick="addArrow()">Arrow</button>
+  <button onclick="addText()">Text</button>
+  <button onclick="exportJSON()">Export JSON</button>
+  <button onclick="canvas.clear(); bgImg && canvas.setBackgroundImage(bgImg, canvas.renderAll.bind(canvas))">Clear</button>
+</div>
 
-  <script>
-    const canvas = new fabric.Canvas('main-canvas', { backgroundColor:'#fff', preserveObjectStacking:true });
-    let bgImg = null;
+<script>
+const canvas = new fabric.Canvas('main-canvas', { preserveObjectStacking:true, selection:true });
+let bgImg = null;
 
-    // File picker
-    const pickFile = document.getElementById('pickFile');
-    pickFile.onchange = e => {
-      const file = e.target.files[0];
-      if (!file) return;
+// File picker
+const pickFile = document.getElementById('pickFile');
+pickFile.onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = ev => {
-        fabric.Image.fromURL(ev.target.result, img => {
-          bgImg = img;
-          const scale = Math.min(canvas.getWidth() / img.width, canvas.getHeight() / img.height);
-          canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), { scaleX: scale, scaleY: scale });
-        });
-      };
-      reader.readAsDataURL(file);
-    };
+  const reader = new FileReader();
+  reader.onload = ev => {
+    fabric.Image.fromURL(ev.target.result, img => {
+      bgImg = img;
+      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), { scaleX: scale, scaleY: scale });
+    });
+  };
+  reader.readAsDataURL(file);
+};
 
-    // Toolbar functions
-    function addRect()   { canvas.add(new fabric.Rect({left:100,top:100,width:200,height:120,fill:'rgba(255,0,0,0.5)',stroke:'#ff0',strokeWidth:3})); }
-    function addCircle() { canvas.add(new fabric.Circle({left:200,top:200,radius:50,fill:'rgba(0,255,255,0.5)',stroke:'#0ff',strokeWidth:3})); }
-    function addArrow()  { canvas.add(new fabric.Path('M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', {left:150,top:150,fill:'yellow',stroke:'orange',strokeWidth:3})); }
-    function addText()   { 
-      const txt = new fabric.Textbox('EDIT ME', {left:100,top:100,fontSize:30,fill:'#000',backgroundColor:'rgba(255,255,255,0.6)',fontWeight:'bold'});
-      canvas.add(txt); 
-      canvas.setActiveObject(txt); 
-      txt.enterEditing();
-    }
+// Auto open file picker on load
+window.onload = () => pickFile.click();
 
-    function exportJSON() {
-      const data = { imageWidth: bgImg?.width, imageHeight: bgImg?.height, overlays: canvas.getObjects().map(o => o.toJSON()) };
-      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='fieldar-overlays.json'; a.click();
-    }
-  </script>
+// Toolbar functions
+function addRect()   { canvas.add(new fabric.Rect({left:100,top:100,width:200,height:120,fill:'rgba(255,0,0,0.5)',stroke:'#ff0',strokeWidth:3})); }
+function addCircle() { canvas.add(new fabric.Circle({left:200,top:200,radius:50,fill:'rgba(0,255,255,0.5)',stroke:'#0ff',strokeWidth:3})); }
+function addArrow()  { canvas.add(new fabric.Path('M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', {left:150,top:150,fill:'yellow',stroke:'orange',strokeWidth:3})); }
+function addText()   { 
+  const txt = new fabric.Textbox('EDIT ME', {left:100,top:100,fontSize:30,fill:'#000',backgroundColor:'rgba(255,255,255,0.6)',fontWeight:'bold'});
+  canvas.add(txt); 
+  canvas.setActiveObject(txt); 
+  txt.enterEditing();
+}
+
+function exportJSON() {
+  const data = { imageWidth: bgImg?.width, imageHeight: bgImg?.height, overlays: canvas.getObjects().map(o => o.toJSON()) };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='fieldar-overlays.json'; a.click();
+}
+
+// Optional: Service Worker registration for PWA
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./service-worker.js')
+    .then(() => console.log('Service Worker Registered!'))
+    .catch(err => console.error('Service Worker Error:', err));
+}
+</script>
+
 </body>
 </html>
