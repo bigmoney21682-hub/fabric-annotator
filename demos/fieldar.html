@@ -87,5 +87,12 @@ function exportJSON() {
 // Auto-open picker on start
 setTimeout(() => document.getElementById('pick').click(), 600);
 </script>
+
+// Register Service Worker for PWA support
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./service-worker.js')
+    .catch(err => console.error('ServiceWorker failed:', err));
+}
+
 </body>
 </html>
