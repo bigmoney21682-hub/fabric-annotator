@@ -19,29 +19,29 @@
 
 <!-- Service Worker -->
 <script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js')
-      .then(() => console.log('Service Worker Registered!'))
-      .catch(err => console.error('SW Error:', err));
-  }
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./service-worker.js')
+    .then(() => console.log('Service Worker Registered!'))
+    .catch(err => console.error('SW Error:', err));
+}
 </script>
 
 <style>
-  body {
+body {
     margin: 0;
     padding: 0;
     text-align: center;
     background: #f4f4f4;
-    font-family: Arial;
-  }
-  #main-image {
+    font-family: Arial, sans-serif;
+}
+#main-image {
     max-width: 95vw;
     border: 1px solid #aaa;
-  }
-  #btn-row {
+}
+#btn-row {
     margin-top: 12px;
-  }
-  button {
+}
+button {
     padding: 10px 15px;
     margin: 5px;
     border: none;
@@ -49,29 +49,29 @@
     color: white;
     border-radius: 5px;
     font-size: 15px;
-    cursor: pointer;
-  }
-  button:active {
+}
+button:active {
     opacity: 0.6;
-  }
-  #debugConsole {
+}
+#debugConsole {
     position: fixed;
     bottom: 0;
     left: 0;
     width: 100%;
-    max-height: 150px;
+    max-height: 200px;
     overflow-y: auto;
-    background: rgba(0,0,0,0.85);
+    background: rgba(0,0,0,0.8);
     color: #0f0;
     font-family: monospace;
     font-size: 12px;
     padding: 5px;
     box-sizing: border-box;
-  }
+    z-index: 9999;
+}
 </style>
 </head>
-<body>
 
+<body>
 <h2>FieldAR HUD</h2>
 
 <!-- Base Image -->
@@ -79,16 +79,15 @@
 
 <!-- Buttons -->
 <div id="btn-row">
-  <button id="exportBtn">Export Overlays</button>
-  <button id="importBtn">Import Overlays</button>
-  <input type="file" id="importFile" accept="application/json" style="display:none">
+    <button id="exportBtn">Export Overlays</button>
+    <button id="importBtn">Import Overlays</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none">
 </div>
 
 <!-- Debug Console -->
 <div id="debugConsole">🖥 Debug console initialized</div>
 
 <script>
-// ========== ON-SCREEN DEBUG ==========
 function log(msg, type='log') {
   console[type](msg);
   const consoleEl = document.getElementById("debugConsole");
@@ -98,102 +97,116 @@ function log(msg, type='log') {
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 
-// ========== INIT ANNOTATOR ==========
-window.onload = function () {
-  const img = document.getElementById("main-image");
-  log("Initializing annotator...");
+document.addEventListener("DOMContentLoaded", () => {
+  log("DOM loaded, waiting for main image...");
 
-  // Initialize Fabric Annotator
-  annoFabric.initCanvas("#main-image", {
-    annotationTextField:
-      "<select class='form-control' name='annotation-text-field'>" +
+  const img = document.getElementById("main-image");
+
+  if (!img) {
+    log("❌ main-image not found!", "error");
+    return;
+  }
+
+  img.onload = () => {
+    log("Image loaded, initializing annotator...");
+
+    // Initialize Fabric Annotator
+    annoFabric.initCanvas("#main-image", {
+      annotationTextField:
+        "<select class='form-control' name='annotation-text-field'>" +
           "<option value='Tag 1'>Tag 1</option>" +
           "<option value='Tag 2'>Tag 2</option>" +
           "<option value='Tag 3'>Tag 3</option>" +
-      "</select>",
-    canvasHeight: img.clientHeight,
-    canvasWidth: img.clientWidth
-  });
+        "</select>",
+      canvasHeight: img.clientHeight,
+      canvasWidth: img.clientWidth
+    });
 
-  // Grab actual canvas object
-  const canvas = annoFabric.canvas;
-  window.fieldARCanvas = canvas;
-  log("Canvas initialized.", 'log');
-
-  // ========== AUTO-LOAD ==========
-  const saved = localStorage.getItem("fieldar_overlays");
-  if (saved) {
-    try {
-      canvas.loadFromJSON(JSON.parse(saved), () => {
-        canvas.renderAll();
-        log("Restored saved overlays.");
-      });
-    } catch(err) {
-      log("Invalid saved overlays: " + err, 'error');
+    const canvas = annoFabric.canvas;
+    if (!canvas) {
+      log("❌ Failed to initialize canvas!", "error");
+      return;
     }
-  }
+    window.fieldARCanvas = canvas;
+    log("Canvas initialized.");
 
-  // ========== AUTO-SAVE ==========
-  canvas.on('object:added', save);
-  canvas.on('object:modified', save);
-  canvas.on('object:removed', save);
-
-  function save() {
-    const data = JSON.stringify(canvas.toJSON());
-    localStorage.setItem("fieldar_overlays", data);
-    log("Saved overlays.");
-  }
-
-  // ========== EXPORT BUTTON ==========
-  document.getElementById("exportBtn").onclick = function () {
-    log("Export button clicked");
-    if (!window.fieldARCanvas) { log("No canvas found. Cannot export.", 'error'); return; }
-    const json = JSON.stringify(window.fieldARCanvas.toJSON());
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "fieldar-overlays.json";
-    a.click();
-    URL.revokeObjectURL(url);
-    log("Export complete. JSON size: " + json.length);
-  };
-
-  // ========== IMPORT BUTTON ==========
-  document.getElementById("importBtn").onclick = function () {
-    log("Import button clicked");
-    document.getElementById("importFile").click();
-  };
-
-  document.getElementById("importFile").onchange = function (event) {
-    log("Import file selected");
-    const file = event.target.files[0];
-    if (!file) { log("No file selected.", 'error'); return; }
-
-    const reader = new FileReader();
-    reader.onload = function (e) {
-      log("File read, parsing JSON...");
-      let data;
+    // Auto-load overlays
+    const saved = localStorage.getItem("fieldar_overlays");
+    if (saved) {
       try {
-        data = JSON.parse(e.target.result);
-        log("Import JSON parsed: " + JSON.stringify(data));
+        canvas.loadFromJSON(JSON.parse(saved), () => {
+          canvas.renderAll();
+          log("Restored saved overlays.");
+        });
       } catch(err) {
-        log("Failed to parse JSON: " + err, 'error');
-        return;
+        log("Invalid saved overlays: " + err, "error");
       }
+    }
 
-      if (!window.fieldARCanvas) { log("Canvas not initialized. Cannot load overlays.", 'error'); return; }
+    // Auto-save on change
+    canvas.on('object:added', save);
+    canvas.on('object:modified', save);
+    canvas.on('object:removed', save);
+    function save() {
+      const data = JSON.stringify(canvas.toJSON());
+      localStorage.setItem("fieldar_overlays", data);
+      log("Saved overlays.");
+    }
 
-      window.fieldARCanvas.loadFromJSON(data, () => {
-        window.fieldARCanvas.renderAll();
-        const count = window.fieldARCanvas.getObjects().length;
-        log("Import complete! Objects loaded: " + count);
-        localStorage.setItem("fieldar_overlays", JSON.stringify(data));
-      });
+    // EXPORT
+    document.getElementById("exportBtn").onclick = () => {
+      log("Export button clicked");
+      if (!window.fieldARCanvas) { log("No canvas found. Cannot export.", "error"); return; }
+      const json = JSON.stringify(window.fieldARCanvas.toJSON());
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "fieldar-overlays.json";
+      a.click();
+      URL.revokeObjectURL(url);
+      log("Export complete. JSON size: " + json.length);
     };
-    reader.readAsText(file);
+
+    // IMPORT
+    const importFile = document.getElementById("importFile");
+    document.getElementById("importBtn").onclick = () => {
+      log("Import button clicked");
+      importFile.click();
+    };
+    importFile.onchange = (event) => {
+      log("Import file selected");
+      const file = event.target.files[0];
+      if (!file) { log("No file selected.", "error"); return; }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        log("File read, parsing JSON...");
+        let data;
+        try {
+          data = JSON.parse(e.target.result);
+          log("Import JSON parsed: " + JSON.stringify(data));
+        } catch(err) {
+          log("Failed to parse JSON: " + err, "error");
+          return;
+        }
+
+        if (!window.fieldARCanvas) { log("Canvas not initialized. Cannot load overlays.", "error"); return; }
+
+        window.fieldARCanvas.loadFromJSON(data, () => {
+          window.fieldARCanvas.renderAll();
+          const count = window.fieldARCanvas.getObjects().length;
+          log("Import complete! Objects loaded: " + count);
+          localStorage.setItem("fieldar_overlays", JSON.stringify(data));
+        });
+      };
+      reader.readAsText(file);
+    };
   };
-};
+
+  // If image is already cached and complete
+  if (img.complete) img.onload();
+});
 </script>
 
 </body>
