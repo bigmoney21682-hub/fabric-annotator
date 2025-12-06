@@ -6,25 +6,25 @@
 
     <title>FieldAR Annotator</title>
 
-    <!-- Manifest for PWA -->
-    <link rel="manifest" href="./manifest.json">
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
 
-    <!-- iOS PWA support -->
+    <!-- iOS PWA Support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
 
     <!-- Annotator Styles -->
-    <link rel="stylesheet" href="./dist/fab-annotator.css">
+    <link rel="stylesheet" href="dist/fab-annotator.css">
 
     <!-- Annotator Script -->
-    <script src="./dist/fab-annotator.js"></script>
+    <script src="dist/fab-annotator.js"></script>
 
-    <!-- Register Service Worker -->
+    <!-- Service Worker -->
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./service-worker.js')
-          .then(() => console.log('Service Worker Registered!'))
-          .catch(err => console.error('Service Worker Error:', err));
+        navigator.serviceWorker.register('service-worker.js')
+          .then(() => console.log("SW registered"))
+          .catch(err => console.error("SW error:", err));
       }
     </script>
 
@@ -32,7 +32,7 @@
         body {
             margin: 0;
             padding: 0;
-            background: #111;
+            background: #fafafa;
             font-family: Arial, sans-serif;
             text-align: center;
         }
@@ -44,136 +44,77 @@
             max-width: 95vw;
             border: 1px solid #ccc;
         }
-        .toolbar {
-            margin-top: 12px;
-        }
-        .toolbar button {
-            padding: 10px 16px;
-            margin: 4px;
-            font-size: 16px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-        }
     </style>
 </head>
 
 <body>
+
     <div id="main-container">
         <h2>FieldAR Annotator</h2>
 
         <!-- Base image -->
-        <img id="main-image" src="./icons/Blue_GCPA-removebg-preview.png" alt="Base Image">
-
-        <!-- Toolbar -->
-        <div class="toolbar">
-            <button onclick="addRect()">Rect</button>
-            <button onclick="addCircle()">Circle</button>
-            <button onclick="addArrow()">Arrow</button>
-            <button onclick="addText()">Text</button>
-            <button onclick="exportJSON()">Export JSON</button>
-            <button onclick="clearOverlays()">Clear</button>
-        </div>
+        <img id="main-image" src="icons/Blue_GCPA-removebg-preview.png" alt="Base Image">
     </div>
 
+    <!-- Annotation + Save/Load Logic -->
     <script>
+        const STORAGE_KEY = "fieldar_overlays";
+
+        // Restore overlays if saved previously
+        function loadSavedOverlays() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (!saved) return null;
+
+            try {
+                return JSON.parse(saved);
+            } catch (err) {
+                console.error("Error parsing saved overlays:", err);
+                return null;
+            }
+        }
+
+        // Auto-save overlays to localStorage
+        function autoSave(canvas) {
+            const data = canvas.toJSON();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            console.log("Overlays saved.");
+        }
+
         window.onload = function () {
             const img = document.getElementById("main-image");
-            if (!img) return console.error("main-image not found!");
 
-            console.log("Image loaded, initializing annotator...");
+            img.onload = function () {
+                console.log("Image loaded → starting annotator");
 
-            annoFabric.initCanvas("#main-image", {
-                annotationTextField:
-                    "<select class='form-control' name='annotation-text-field'>" +
-                        "<option value='Tag 1'>Tag 1</option>" +
-                        "<option value='Tag 2'>Tag 2</option>" +
-                        "<option value='Tag 3'>Tag 3</option>" +
-                    "</select>",
-                canvasHeight: img.clientHeight,
-                canvasWidth: img.clientWidth
-            });
+                const saved = loadSavedOverlays();
 
-            const canvas = annoFabric.canvas;
+                // Initialize annotator
+                const canvas = annoFabric.initCanvas("#main-image", {
+                    annotationTextField:
+                        "<select class='form-control' name='annotation-text-field'>" +
+                            "<option value='Tag 1'>Tag 1</option>" +
+                            "<option value='Tag 2'>Tag 2</option>" +
+                            "<option value='Tag 3'>Tag 3</option>" +
+                        "</select>",
+                    canvasHeight: img.clientHeight,
+                    canvasWidth: img.clientWidth
+                });
 
-            // ---------- Dynamic Save/Load ----------
-
-            function getKey() {
-                return "overlays_" + canvas.backgroundImage?.getSrc();
-            }
-
-            function saveOverlays() {
-                if (!canvas.backgroundImage) return;
-                localStorage.setItem(getKey(), JSON.stringify(canvas.toJSON()));
-                console.log("Overlays saved");
-            }
-
-            function loadOverlays() {
-                if (!canvas.backgroundImage) return;
-                const json = localStorage.getItem(getKey());
-                if (json) {
-                    canvas.loadFromJSON(json, canvas.renderAll.bind(canvas));
-                    console.log("Overlays loaded");
+                // If previous overlays exist → restore them
+                if (saved) {
+                    console.log("Restoring saved overlays...");
+                    canvas.loadFromJSON(saved, () => {
+                        canvas.renderAll();
+                    });
                 }
-            }
 
-            function clearOverlays() {
-                canvas.getObjects().forEach(obj => {
-                    if (obj !== canvas.backgroundImage) canvas.remove(obj);
-                });
-                saveOverlays();
-            }
-
-            // Save automatically on changes
-            canvas.on('object:added', saveOverlays);
-            canvas.on('object:modified', saveOverlays);
-            canvas.on('object:removed', saveOverlays);
-
-            // Load overlays after background is set
-            if (canvas.backgroundImage) loadOverlays();
-
-            // ---------- Toolbar Helper Functions ----------
-            window.addRect = () => canvas.add(new fabric.Rect({
-                left: 100, top: 100, width: 200, height: 120,
-                fill: 'rgba(255,0,0,0.5)', stroke: '#ff0', strokeWidth: 5
-            }));
-
-            window.addCircle = () => canvas.add(new fabric.Circle({
-                left: 200, top: 200, radius: 100,
-                fill: 'rgba(0,255,255,0.5)', stroke: '#0ff', strokeWidth: 5
-            }));
-
-            window.addArrow = () => canvas.add(new fabric.Path(
-                'M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', 
-                { left: 150, top: 150, fill: 'yellow', stroke: 'orange', strokeWidth: 6 }
-            ));
-
-            window.addText = () => {
-                const txt = new fabric.Textbox('EDIT ME', {
-                    left: 100, top: 100, fontSize: 50, fill: '#ffff00',
-                    backgroundColor: 'rgba(0,0,0,0.6)', fontWeight: 'bold'
-                });
-                canvas.add(txt);
-                canvas.setActiveObject(txt);
-                txt.enterEditing();
-            }
-
-            window.exportJSON = () => {
-                const data = {
-                    imageWidth: canvas.backgroundImage?.width,
-                    imageHeight: canvas.backgroundImage?.height,
-                    overlays: canvas.getObjects().map(o => o.toJSON())
-                };
-                const blob = new Blob([JSON.stringify(data,null,2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'fieldar-overlays.json';
-                a.click();
-            }
-
-            window.clearOverlays = clearOverlays;
-        }
+                // Auto-save whenever user changes the canvas
+                canvas.on("object:added", () => autoSave(canvas));
+                canvas.on("object:modified", () => autoSave(canvas));
+                canvas.on("object:removed", () => autoSave(canvas));
+            };
+        };
     </script>
+
 </body>
 </html>
