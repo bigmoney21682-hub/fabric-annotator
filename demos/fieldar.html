@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Field AR Labeler</title>
+  <link rel="stylesheet" href="../dist/fab-annotator.css">
+  <style>
+    body, html { margin:0; padding:0; height:100%; background:#000; }
+    #canvas-container { width:100vw; height:100vh; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <script src="../bower_components/jquery/dist/jquery.min.js"></script>
+  <script src="../bower_components/fabric.js/dist/fabric.min.js"></script>
+  <script src="../dist/fab-annotator.js"></script>
+
+  <script>
+    $(function() {
+      $('.fab-annotate').annotator({
+        onLoad: function() {
+          // Auto-open file picker when page loads
+          setTimeout(() => document.getElementById('file-input')?.click(), 500);
+        }
+      });
+    });
+  </script>
+
+  <!-- Hidden file picker -->
+  <input type="file" id="file-input" accept="image/*" style="display:none">
+  <script>
+    document.getElementById('file-input').addEventListener('change', function(e) {
+      if (e.target.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          $('.fab-annotate').attr('src', event.target.result).annotator();
+        };
+        reader.readAsDataURL(e.target.files[0]);
+      }
+    });
+  </script>
+</body>
+</html>
