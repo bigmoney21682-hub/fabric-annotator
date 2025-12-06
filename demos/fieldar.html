@@ -1,107 +1,86 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>Field AR Labeler</title>
-  <link rel="manifest" href="/fabric-annotator/manifest.json">
-  <meta name="theme-color" content="#2b2b2b">
-  <style>
-    body,html{margin:0;padding:0;height:100%;overflow:hidden;background:#000}
-    canvas{display:block;width:100vw !important;height:100vh !important}
-    .toolbar{position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);padding:12px 8px;text-align:center;z-index:9999}
-    button{margin:4px 8px;padding:14px 18px;background:#fff;border:none;border-radius:12px;font-size:16px;font-weight:bold}
-    select{padding:4px;margin-left:8px;font-size:16px}
-  </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
-  <!-- Optional: include fabric-annotator JS if you want polygons -->
-  <!-- <script src="fabric-annotator.js"></script> -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FieldAR Annotator</title>
+
+    <!-- Manifest for PWA -->
+    <link rel="manifest" href="./manifest.json">
+
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <!-- Annotator Styles -->
+    <link rel="stylesheet" href="./dist/fab-annotator.css">
+
+    <!-- Annotator Script -->
+    <script src="./dist/fab-annotator.js"></script>
+
+    <!-- Register Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then(() => console.log('Service Worker Registered!'))
+          .catch(err => console.error('Service Worker Error:', err));
+      }
+    </script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        #main-container {
+            margin: 10px auto;
+            max-width: 95vw;
+        }
+        #main-image {
+            max-width: 95vw;
+            border: 1px solid #ccc;
+        }
+    </style>
 </head>
+
 <body>
+    <div id="main-container">
+        <h2>FieldAR Annotator</h2>
 
-<canvas id="c"></canvas>
+        <!-- Example Image Used for Annotating -->
+        <!-- Replace with your real image later -->
+        <img id="main-image" src="./icons/Blue_GCPA-removebg-preview.png" alt="Base Image">
+    </div>
 
-<div class="toolbar">
-  <button onclick="pick.click()">Choose Photo</button>
-  <button onclick="addRect()">Rect</button>
-  <button onclick="addCircle()">Circle</button>
-  <button onclick="addArrow()">Arrow</button>
-  <button onclick="addText()">Text</button>
-  <button onclick="exportJSON()">Export JSON</button>
-  <button onclick="canvas.clear();loadBg()">Clear</button>
-</div>
+    <script>
+        // Wait for image to load before initializing canvas
+        window.onload = function () {
+            const img = document.getElementById("main-image");
 
-<input type="file" id="pick" accept="image/*" style="display:none">
+            if (!img) {
+                console.error("main-image not found!");
+                return;
+            }
 
-<script>
-const canvas = new fabric.Canvas('c', { backgroundColor:'#111', preserveObjectStacking:true });
-let bgImg = null;
+            console.log("Image loaded, initializing annotator...");
 
-// Load photo
-document.getElementById('pick').onchange = e => {
-  const file = e.target.files[0];
-  const reader = new FileReader();
-  reader.onload = ev => {
-    fabric.Image.fromURL(ev.target.result, img => {
-      bgImg = img;
-      const scale = Math.min(window.innerWidth / img.width, window.innerHeight / img.height);
-      canvas.setWidth(img.width * scale);
-      canvas.setHeight(img.height * scale);
-      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), { scaleX: scale, scaleY: scale });
-    });
-  };
-  reader.readAsDataURL(file);
-};
+            annoFabric.initCanvas("#main-image", {
+                annotationTextField:
+                    "<select class='form-control' name='annotation-text-field'>" +
+                        "<option value='Tag 1'>Tag 1</option>" +
+                        "<option value='Tag 2'>Tag 2</option>" +
+                        "<option value='Tag 3'>Tag 3</option>" +
+                    "</select>",
 
-// Toolbar tools
-function addRect()   { canvas.add(new fabric.Rect({left:100,top:100,width:200,height:120,fill:'rgba(255,0,0,0.5)',stroke:'#ff0',strokeWidth:5})); }
-function addCircle() { canvas.add(new fabric.Circle({left:200,top:200,radius:100,fill:'rgba(0,255,255,0.5)',stroke:'#0ff',strokeWidth:5})); }
-function addArrow()  { canvas.add(new fabric.Path('M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', {left:150,top:150,fill:'yellow',stroke:'orange',strokeWidth:6})); }
-function addText()   { 
-  const txt = new fabric.Textbox('EDIT ME', {left:100,top:100,fontSize:50,fill:'#ffff00',backgroundColor:'rgba(0,0,0,0.6)',fontWeight:'bold'});
-  canvas.add(txt); 
-  canvas.setActiveObject(txt); 
-  txt.enterEditing();
-}
+                canvasHeight: img.clientHeight,
+                canvasWidth: img.clientWidth
+            });
+        };
+    </script>
 
-// Export overlays
-function exportJSON() {
-  const data = { imageWidth: bgImg?.width, imageHeight: bgImg?.height, overlays: canvas.getObjects().map(o => o.toJSON()) };
-  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='fieldar-overlays.json'; a.click();
-}
-
-// Auto-open picker
-setTimeout(() => document.getElementById('pick').click(), 600);
-
-// Optional: load background (if needed)
-function loadBg() {
-  if(bgImg) {
-    canvas.setBackgroundImage(bgImg, canvas.renderAll.bind(canvas), { scaleX: 1, scaleY: 1 });
-  }
-}
-
-// Service Worker registration
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/fabric-annotator/service-worker.js')
-  navigator.serviceWorker.register('./service-worker.js')
-    .then(()=>console.log('Service Worker registered!'))
-    .catch(err=>console.error('SW registration failed:', err));
-}
-
-/* -----------------------------
-Optional polygon/fabric-annotator integration:
-
-// Example usage if you include fabric-annotator.js
-// annoFabric.initCanvas("#c", { canvasHeight: canvas.height, canvasWidth: canvas.width });
------------------------------ */
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js')
-    .then(() => console.log("Service Worker Registered!"))
-    .catch(err => console.error("SW failed", err));
-}
-</script>
 </body>
 </html>

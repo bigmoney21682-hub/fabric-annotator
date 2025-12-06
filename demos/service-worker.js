@@ -1,64 +1,38 @@
-// Service Worker for FieldAR PWA
 const CACHE_NAME = 'fieldar-cache-v1';
 
-// Files relative to /demos/
 const urlsToCache = [
   './fieldar.html',
   './manifest.json',
   './fab-annotator.js',
   './fab-annotator.css',
+
+  // icons
   './icons/Blue_GCPA-removebg-preview.png',
   './icons/Blue_He_Comp.png'
-  '../dist/fab-annotator.js',
-  '../dist/fab-annotator.css',
-  '../icons/Blue_GCPA-removebg-preview.png',
-  '../icons/Blue_He_Comp.png'
 ];
 
-// Install SW + cache files
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
-  console.log('[SW] Install event');
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('[SW] Caching app files');
-        return cache.addAll(urlsToCache);
-      })
-      .catch(err => console.error('[SW] Cache addAll error:', err))
-  );
-});
-
-// Activate SW + remove old caches
-self.addEventListener('activate', event => {
-  console.log('[SW] Activate event');
-  event.waitUntil(
-    caches.keys().then(keys => {
-      return Promise.all(
-        keys
-          .filter(key => key !== CACHE_NAME)
-          .map(key => {
-            console.log('[SW] Removing old cache:', key);
-            return caches.delete(key);
-          })
-      );
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(urlsToCache);
     })
   );
 });
 
-// Intercept requests
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => caches.delete(key))
+      )
+    )
+  );
+});
+
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request).then(response => response || fetch(event.request))
-    caches.match(event.request)
-      .then(response => {
-        // Serve from cache OR network
-        return response || fetch(event.request);
-      })
-      .catch(err => {
-        console.error('[SW] Fetch failed:', err);
-        return fetch(event.request);
-      })
+    caches.match(event.request).then(resp => resp || fetch(event.request))
   );
 });
