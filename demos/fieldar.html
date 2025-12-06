@@ -96,17 +96,12 @@ Optional polygon/fabric-annotator integration:
 // Example usage if you include fabric-annotator.js
 // annoFabric.initCanvas("#c", { canvasHeight: canvas.height, canvasWidth: canvas.width });
 ----------------------------- */
-</script>
-
+<script>
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js')
-    .then(reg => {
-      alert("Service Worker Registered!");
-    })
-    .catch(err => {
-      alert("Service Worker FAILED: " + err);
-    });
+  navigator.serviceWorker.register('./service-worker.js')
+    .then(() => console.log("Service Worker Registered!"))
+    .catch(err => console.error("SW failed", err));
 }
-
+</script>
 </body>
 </html>
