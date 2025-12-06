@@ -5,70 +5,69 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FieldAR Annotator</title>
 
-<!-- Optional: Manifest for PWA -->
-<link rel="manifest" href="./manifest.json">
-
 <!-- Fabric.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
 
+<!-- Fabric Annotator -->
+<script src="./dist/fab-annotator.js"></script>
+
 <style>
-  html, body { margin:0; padding:0; height:100%; background:#f0f0f0; font-family: Arial, sans-serif; text-align:center; }
-  canvas { display:block; margin:0 auto; border:1px solid #ccc; }
-  .toolbar { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.8); padding:10px; text-align:center; z-index:999; }
-  .toolbar button { margin:4px; padding:10px 16px; font-size:16px; font-weight:bold; border:none; border-radius:8px; cursor:pointer; }
-  .toolbar button:hover { opacity:0.8; }
+html, body { margin:0; padding:0; height:100%; background:#111; font-family: Arial, sans-serif; text-align:center; }
+canvas { display:block; width:100vw !important; height:100vh !important; }
+.toolbar { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.8); padding: 10px; text-align:center; z-index:9999; }
+.toolbar button { margin:4px 6px; padding:10px 14px; background:#fff; border:none; border-radius:8px; font-weight:bold; }
+select { padding:4px; margin-left:8px; font-size:16px; }
+#pick { display:none; }
 </style>
 </head>
 <body>
 
-<input type="file" id="pickFile" accept="image/*" style="display:none">
-
-<canvas id="main-canvas" width="800" height="600"></canvas>
+<canvas id="c"></canvas>
 
 <div class="toolbar">
+  <button onclick="pick.click()">Choose Photo</button>
   <button onclick="addRect()">Rect</button>
   <button onclick="addCircle()">Circle</button>
   <button onclick="addArrow()">Arrow</button>
   <button onclick="addText()">Text</button>
   <button onclick="exportJSON()">Export JSON</button>
-  <button onclick="canvas.clear(); bgImg && canvas.setBackgroundImage(bgImg, canvas.renderAll.bind(canvas))">Clear</button>
+  <button onclick="canvas.clear(); loadBg()">Clear</button>
 </div>
 
+<input type="file" id="pick" accept="image/*">
+
 <script>
-const canvas = new fabric.Canvas('main-canvas', { preserveObjectStacking:true, selection:true });
+const canvas = new fabric.Canvas('c', { backgroundColor:'#111', preserveObjectStacking:true });
 let bgImg = null;
 
-// File picker
-const pickFile = document.getElementById('pickFile');
-pickFile.onchange = e => {
+// Load photo
+document.getElementById('pick').onchange = e => {
   const file = e.target.files[0];
-  if (!file) return;
-
   const reader = new FileReader();
   reader.onload = ev => {
     fabric.Image.fromURL(ev.target.result, img => {
       bgImg = img;
-      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+      const scale = Math.min(window.innerWidth / img.width, window.innerHeight / img.height);
+      canvas.setWidth(img.width * scale);
+      canvas.setHeight(img.height * scale);
       canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), { scaleX: scale, scaleY: scale });
     });
   };
   reader.readAsDataURL(file);
 };
 
-// Auto open file picker on load
-window.onload = () => pickFile.click();
-
 // Toolbar functions
-function addRect()   { canvas.add(new fabric.Rect({left:100,top:100,width:200,height:120,fill:'rgba(255,0,0,0.5)',stroke:'#ff0',strokeWidth:3})); }
-function addCircle() { canvas.add(new fabric.Circle({left:200,top:200,radius:50,fill:'rgba(0,255,255,0.5)',stroke:'#0ff',strokeWidth:3})); }
-function addArrow()  { canvas.add(new fabric.Path('M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', {left:150,top:150,fill:'yellow',stroke:'orange',strokeWidth:3})); }
-function addText()   { 
-  const txt = new fabric.Textbox('EDIT ME', {left:100,top:100,fontSize:30,fill:'#000',backgroundColor:'rgba(255,255,255,0.6)',fontWeight:'bold'});
-  canvas.add(txt); 
-  canvas.setActiveObject(txt); 
+function addRect() { canvas.add(new fabric.Rect({left:100,top:100,width:200,height:120,fill:'rgba(255,0,0,0.5)',stroke:'#ff0',strokeWidth:5})); }
+function addCircle() { canvas.add(new fabric.Circle({left:200,top:200,radius:100,fill:'rgba(0,255,255,0.5)',stroke:'#0ff',strokeWidth:5})); }
+function addArrow() { canvas.add(new fabric.Path('M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', {left:150,top:150,fill:'yellow',stroke:'orange',strokeWidth:6})); }
+function addText() { 
+  const txt = new fabric.Textbox('EDIT ME', {left:100,top:100,fontSize:50,fill:'#ffff00',backgroundColor:'rgba(0,0,0,0.6)',fontWeight:'bold'});
+  canvas.add(txt);
+  canvas.setActiveObject(txt);
   txt.enterEditing();
 }
 
+// Export overlays to JSON
 function exportJSON() {
   const data = { imageWidth: bgImg?.width, imageHeight: bgImg?.height, overlays: canvas.getObjects().map(o => o.toJSON()) };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -76,12 +75,36 @@ function exportJSON() {
   const a = document.createElement('a'); a.href=url; a.download='fieldar-overlays.json'; a.click();
 }
 
-// Optional: Service Worker registration for PWA
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js')
-    .then(() => console.log('Service Worker Registered!'))
-    .catch(err => console.error('Service Worker Error:', err));
+// Reload background image if cleared
+function loadBg() {
+  if(bgImg) {
+    canvas.setBackgroundImage(bgImg, canvas.renderAll.bind(canvas), { scaleX:1, scaleY:1 });
+  }
 }
+
+// Auto-open file picker on load
+setTimeout(() => document.getElementById('pick').click(), 600);
+
+// Service Worker registration
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./service-worker.js')
+    .then(()=>console.log('Service Worker registered!'))
+    .catch(err=>console.error('SW registration failed:', err));
+}
+
+// Initialize polygon annotation with annoFabric
+window.onload = function() {
+  const imgEl = document.createElement('img');
+  imgEl.style.display='none';
+  document.body.appendChild(imgEl);
+
+  // Example empty image -- required for annoFabric init
+  annoFabric.initCanvas(imgEl, {
+    annotationTextField: "<select class='form-control' name='annotation-text-field'><option>Tag 1</option><option>Tag 2</option></select>",
+    canvasHeight: window.innerHeight,
+    canvasWidth: window.innerWidth
+  });
+};
 </script>
 
 </body>
