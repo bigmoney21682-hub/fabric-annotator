@@ -96,5 +96,16 @@ Optional polygon/fabric-annotator integration:
 // annoFabric.initCanvas("#c", { canvasHeight: canvas.height, canvasWidth: canvas.width });
 ----------------------------- */
 </script>
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(reg => {
+      alert("Service Worker Registered!");
+    })
+    .catch(err => {
+      alert("Service Worker FAILED: " + err);
+    });
+}
+
 </body>
 </html>
