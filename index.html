@@ -57,10 +57,10 @@
             position: fixed;
             bottom: 0;
             left: 0;
-            right: 0;
-            max-height: 150px;
+            width: 100%;
+            max-height: 200px;
             overflow-y: auto;
-            background: #111;
+            background: rgba(0,0,0,0.85);
             color: #0f0;
             font-family: monospace;
             font-size: 12px;
@@ -71,6 +71,7 @@
 </head>
 
 <body>
+
     <h2>FieldAR HUD</h2>
 
     <!-- Base Image -->
@@ -82,69 +83,60 @@
         <input type="file" id="importFile" accept="application/json" style="display:none">
     </div>
 
-    <!-- On-screen Debug Console -->
     <div id="debugConsole"></div>
 
     <script>
-        // --------------------------
-        // On-screen console logger
-        // --------------------------
-        const consoleDiv = document.getElementById("debugConsole");
-        function log(msg, type="log") {
-            const line = document.createElement("div");
-            line.textContent = `[${type.toUpperCase()}] ${msg}`;
-            consoleDiv.appendChild(line);
-            consoleDiv.scrollTop = consoleDiv.scrollHeight;
-            console[type](msg);
+        // ===========================
+        // On-screen Debug Console
+        // ===========================
+        const debugEl = document.getElementById("debugConsole");
+        function log(msg, type="LOG") {
+            const time = new Date().toLocaleTimeString();
+            debugEl.innerHTML += `[${type}] ${time}: ${msg}<br>`;
+            debugEl.scrollTop = debugEl.scrollHeight;
+            console[type.toLowerCase()] && console[type.toLowerCase()](msg);
         }
         log("🖥 Debug console initialized");
 
-        // --------------------------
-        // Annotator initialization
-        // --------------------------
+        // ===========================
+        // Initialize annotator after image loads
+        // ===========================
         const img = document.getElementById("main-image");
-
-        function initAnnotator() {
-            const w = img.clientWidth || img.naturalWidth;
-            const h = img.clientHeight || img.naturalHeight;
-            log(`Image ready: width=${w}, height=${h}`);
+        img.onload = () => {
+            log("Initializing annotator...");
 
             const canvas = annoFabric.initCanvas("#main-image", {
-                annotationTextField: "<select class='form-control' name='annotation-text-field'>"+
-                    "<option value='Tag 1'>Tag 1</option>"+
-                    "<option value='Tag 2'>Tag 2</option>"+
-                    "<option value='Tag 3'>Tag 3</option>"+
+                annotationTextField:
+                    "<select class='form-control' name='annotation-text-field'>" +
+                        "<option value='Tag 1'>Tag 1</option>" +
+                        "<option value='Tag 2'>Tag 2</option>" +
+                        "<option value='Tag 3'>Tag 3</option>" +
                     "</select>",
-                canvasHeight: h,
-                canvasWidth: w
+                canvasHeight: img.clientHeight,
+                canvasWidth: img.clientWidth
             });
 
-            if (!canvas) {
-                log("❌ Canvas not initialized!", "error");
-                return;
-            }
-
             window.fieldARCanvas = canvas;
-            log("Canvas initialized.");
+            log("Canvas initialized");
 
-            // --------------------------
-            // Auto-load overlays
-            // --------------------------
+            // ===========================
+            // Auto-load saved overlays
+            // ===========================
             const saved = localStorage.getItem("fieldar_overlays");
             if (saved) {
                 try {
                     canvas.loadFromJSON(JSON.parse(saved), () => {
                         canvas.renderAll();
-                        log("Restored saved overlays.");
+                        log("Restored saved overlays");
                     });
                 } catch (err) {
-                    log("Invalid saved overlays: " + err, "error");
+                    log("Invalid saved overlays: " + err, "ERROR");
                 }
             }
 
-            // --------------------------
-            // Auto-save on change
-            // --------------------------
+            // ===========================
+            // Auto-save on changes
+            // ===========================
             canvas.on('object:added', save);
             canvas.on('object:modified', save);
             canvas.on('object:removed', save);
@@ -152,24 +144,17 @@
             function save() {
                 const data = JSON.stringify(canvas.toJSON());
                 localStorage.setItem("fieldar_overlays", data);
-                log("Saved overlays.");
+                log("Saved overlays");
             }
-        }
+        };
 
-        img.addEventListener("load", initAnnotator);
-        if (img.complete) initAnnotator();
-
-        // --------------------------
-        // EXPORT / IMPORT Buttons
-        // --------------------------
-        document.getElementById("exportBtn").onclick = function () {
+        // ===========================
+        // Export / Import buttons
+        // ===========================
+        document.getElementById("exportBtn").onclick = () => {
             log("Export button clicked");
-
             const c = window.fieldARCanvas;
-            if (!c) {
-                log("No canvas found. Cannot export.", "error");
-                return;
-            }
+            if (!c) { log("No canvas found. Cannot export.", "ERROR"); return; }
 
             const json = JSON.stringify(c.toJSON());
             const blob = new Blob([json], { type: "application/json" });
@@ -179,50 +164,41 @@
             a.download = "fieldar-overlays.json";
             a.click();
             URL.revokeObjectURL(url);
-
             log(`Export complete! JSON size: ${json.length}`);
         };
 
-        document.getElementById("importFile").onchange = function (event) {
-            log("Import file selected");
+        document.getElementById("importBtn").onclick = () => {
+            log("Import button clicked");
+            document.getElementById("importFile").click();
+        };
 
+        document.getElementById("importFile").onchange = (event) => {
+            log("Import file selected");
             const file = event.target.files[0];
-            if (!file) {
-                log("No import file selected.", "error");
-                return;
-            }
+            if (!file) { log("No import file?", "ERROR"); return; }
 
             const reader = new FileReader();
-            reader.onload = function (e) {
+            reader.onload = (e) => {
                 log("File read, parsing JSON...");
                 let data;
                 try {
                     data = JSON.parse(e.target.result);
-                    log("Import JSON parsed: " + JSON.stringify(data));
+                    log("Import JSON parsed");
                 } catch (err) {
-                    log("Failed to parse JSON: " + err, "error");
+                    log("Failed to parse JSON: " + err, "ERROR");
                     return;
                 }
 
                 const c = window.fieldARCanvas;
-                if (!c) {
-                    log("Canvas not initialized! Cannot load overlays.", "error");
-                    return;
-                }
+                if (!c) { log("Canvas not initialized! Cannot load overlays.", "ERROR"); return; }
 
                 c.loadFromJSON(data, () => {
                     c.renderAll();
-                    const count = c.getObjects().length;
-                    log(`Import complete! Objects loaded: ${count}`);
+                    log(`Import complete! Objects loaded: ${c.getObjects().length}`);
                     localStorage.setItem("fieldar_overlays", JSON.stringify(data));
                 });
             };
             reader.readAsText(file);
-        };
-
-        document.getElementById("importBtn").onclick = function () {
-            log("Import button clicked");
-            document.getElementById("importFile").click();
         };
     </script>
 </body>
