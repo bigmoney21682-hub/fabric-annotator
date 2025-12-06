@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Field AR Labeler</title>
+  <link rel="stylesheet" href="../dist/fab-annotator.css">
+  <style>
+    body,html{margin:0;padding:0;height:100%;background:#111}
+    #c{width:100vw;height:100vh}
+  </style>
+</head>
+<body>
+
+<!-- This hidden image is required by the library -->
+<img class="fab-annotate" src="" style="display:none">
+
+<canvas id="c"></canvas>
+
+<script src="../bower_components/jquery/dist/jquery.min.js"></script>
+<script src="../bower_components/fabric.js/dist/fabric.min.js"></script>
+<script src="../dist/fab-annotator.js"></script>
+
+<script>
+// Wait for everything to load
+$(function() {
+  // When user picks a photo
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = evt => {
+      $('.fab-annotate').attr('src', evt.target.result).annotator();
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Auto-open picker 500 ms after page load
+  setTimeout(() => input.click(), 500);
+});
+</script>
+
+</body>
+</html>
