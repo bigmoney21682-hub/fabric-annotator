@@ -6,10 +6,10 @@
   <title>Field AR Labeler</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
   <style>
-    body,html{margin:0;padding:0;height:100%;background:#000}
-    #c{width:100vw;height:100vh;display:block}
-    .toolbar{position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);padding:10px;text-align:center;z-index:999}
-    button{margin:5px;padding:12px 16px;background:#fff;border:none;border-radius:8px;font-size:16px}
+    body,html{margin:0;padding:0;height:100%;overflow:hidden;background:#000}
+    canvas{display:block;width:100vw !important;height:100vh !important}
+    .toolbar{position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);padding:12px 8px;text-align:center;z-index:9999}
+    button{margin:4px 8px;padding:14px 18px;background:#fff;border:none;border-radius:12px;font-size:16px;font-weight:bold}
   </style>
 </head>
 <body>
@@ -17,55 +17,64 @@
 <canvas id="c"></canvas>
 
 <div class="toolbar">
-  <input type="file" id="pick" accept="image/*" style="display:none">
   <button onclick="pick.click()">Choose Photo</button>
   <button onclick="addRect()">Rect</button>
   <button onclick="addCircle()">Circle</button>
+  <button onclick="addArrow()">Arrow</button>
   <button onclick="addText()">Text</button>
   <button onclick="exportJSON()">Export JSON</button>
-  <button onclick="clearAll()">Clear</button>
+  <button onclick="canvas.clear();loadBg()">Clear</button>
 </div>
 
-<script>
-const canvas = new fabric.Canvas('c', { backgroundColor: '#111' });
-let bg = null;
+<input type="file" id="pick" accept="image/*" style="display:none">
 
-// Load photo
+<script>
+const canvas = new fabric.Canvas('c', {
+  backgroundColor: '#111',
+  preserveObjectStacking: true
+});
+let bgImg = null;
+
+// Load and fit photo perfectly
 document.getElementById('pick').onchange = e => {
   const file = e.target.files[0];
   const reader = new FileReader();
   reader.onload = ev => {
     fabric.Image.fromURL(ev.target.result, img => {
-      canvas.setWidth(img.width);
-      canvas.setHeight(img.height);
+      bgImg = img;
+      const scale = Math.min(
+        window.innerWidth / img.width,
+        window.innerHeight / img.height
+      );
+      canvas.setWidth(img.width * scale);
+      canvas.setHeight(img.height * scale);
       canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
-        scaleX: canvas.width / img.width,
-        scaleY: canvas.height / img.height
+        scaleX: scale,
+        scaleY: scale
       });
-      bg = img;
+      canvas.renderAll();
     });
   };
   reader.readAsDataURL(file);
 };
 
 // Tools
-function addRect() {
-  const rect = new fabric.Rect({ left: 100, top: 100, width: 150, height: 100, fill: 'rgba(255,0,0,0.5)', stroke: 'red', strokeWidth: 3 });
-  canvas.add(rect);
+function addRect()   { canvas.add(new fabric.Rect({left:100,top:100,width:200,height:120,fill:'rgba(255,0,0,0.5)',stroke:'#ff0',strokeWidth:5})); }
+function addCircle() { canvas.add(new fabric.Circle({left:200,top:200,radius:100,fill:'rgba(0,255,255,0.5)',stroke:'#0ff',strokeWidth:5})); }
+function addArrow()  {
+  const arrow = new fabric.Path('M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', {left:150,top:150,fill:'yellow',stroke:'orange',strokeWidth:6});
+  canvas.add(arrow);
 }
-function addCircle() {
-  const circ = new fabric.Circle({ left: 200, top: 200, radius: 80, fill: 'rgba(0,255,0,0.5)', stroke: 'lime', strokeWidth: 4 });
-  canvas.add(circ);
+function addText()   {
+  const txt = new fabric.Textbox('EDIT ME', {left:100,top:100,fontSize:50,fill:'#ffff00',backgroundColor:'rgba(0,0,0,0.6)',fontWeight:'bold'});
+  canvas.add(txt); canvas.setActiveObject(txt); txt.enterEditing();
 }
-function addText() {
-  const text = new fabric.Textbox('Tap to edit', { left: 150, top: 150, fontSize: 40, fill: '#ffff00', backgroundColor: 'rgba(0,0,0,0.5)' });
-  canvas.add(text);
-  canvas.setActiveObject(text);
-  text.enterEditing();
-}
-function clearAll() { canvas.remove(...canvas.getObjects()); }
 function exportJSON() {
-  const data = { background: bg?.toDataURL(), objects: canvas.toJSON().objects };
+  const data = {
+    imageWidth: bgImg?.width,
+    imageHeight: bgImg?.height,
+    overlays: canvas.getObjects().map(o => o.toJSON())
+  };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
