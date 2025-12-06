@@ -2,7 +2,7 @@
   "name": "Field AR Labeler",
   "short_name": "FieldAR",
   "description": "Photo annotation & field overlay labeling tool.",
-  "start_url": "fieldar.html",
+  "start_url": "/fabric-annotator/fieldar.html",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#2b2b2b",
