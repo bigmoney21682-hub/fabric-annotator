@@ -42,38 +42,77 @@
       margin: 0 auto;
       background: #fff;
     }
+    .toolbar {
+      margin-top: 10px;
+    }
+    .toolbar button {
+      padding: 10px 14px;
+      margin: 4px;
+      font-size: 14px;
+    }
   </style>
 </head>
 
 <body>
   <div id="main-container">
     <h2>FieldAR Annotator</h2>
+
+    <!-- Canvas -->
     <canvas id="main-canvas" width="800" height="600"></canvas>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <button onclick="pickFile.click()">Choose Photo</button>
+      <button onclick="addRect()">Rect</button>
+      <button onclick="addCircle()">Circle</button>
+      <button onclick="addArrow()">Arrow</button>
+      <button onclick="addText()">Text</button>
+      <button onclick="exportJSON()">Export JSON</button>
+      <button onclick="canvas.clear()">Clear</button>
+    </div>
+
+    <!-- Hidden File Picker -->
+    <input type="file" id="pickFile" accept="image/*" style="display:none">
   </div>
 
   <script>
-    // Initialize FieldAR on the canvas
-    window.onload = function () {
-      const canvasEl = "#main-canvas";
+    const canvas = new fabric.Canvas('main-canvas', { backgroundColor:'#fff', preserveObjectStacking:true });
+    let bgImg = null;
 
-      if (!canvasEl) {
-        console.error("Canvas element not found!");
-        return;
-      }
+    // File picker
+    const pickFile = document.getElementById('pickFile');
+    pickFile.onchange = e => {
+      const file = e.target.files[0];
+      if (!file) return;
 
-      console.log("Initializing annotator on canvas...");
-
-      annoFabric.initCanvas(canvasEl, {
-        annotationTextField:
-          "<select class='form-control' name='annotation-text-field'>" +
-          "<option value='Tag 1'>Tag 1</option>" +
-          "<option value='Tag 2'>Tag 2</option>" +
-          "<option value='Tag 3'>Tag 3</option>" +
-          "</select>",
-        canvasHeight: 600,
-        canvasWidth: 800
-      });
+      const reader = new FileReader();
+      reader.onload = ev => {
+        fabric.Image.fromURL(ev.target.result, img => {
+          bgImg = img;
+          const scale = Math.min(canvas.getWidth() / img.width, canvas.getHeight() / img.height);
+          canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), { scaleX: scale, scaleY: scale });
+        });
+      };
+      reader.readAsDataURL(file);
     };
+
+    // Toolbar functions
+    function addRect()   { canvas.add(new fabric.Rect({left:100,top:100,width:200,height:120,fill:'rgba(255,0,0,0.5)',stroke:'#ff0',strokeWidth:3})); }
+    function addCircle() { canvas.add(new fabric.Circle({left:200,top:200,radius:50,fill:'rgba(0,255,255,0.5)',stroke:'#0ff',strokeWidth:3})); }
+    function addArrow()  { canvas.add(new fabric.Path('M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', {left:150,top:150,fill:'yellow',stroke:'orange',strokeWidth:3})); }
+    function addText()   { 
+      const txt = new fabric.Textbox('EDIT ME', {left:100,top:100,fontSize:30,fill:'#000',backgroundColor:'rgba(255,255,255,0.6)',fontWeight:'bold'});
+      canvas.add(txt); 
+      canvas.setActiveObject(txt); 
+      txt.enterEditing();
+    }
+
+    function exportJSON() {
+      const data = { imageWidth: bgImg?.width, imageHeight: bgImg?.height, overlays: canvas.getObjects().map(o => o.toJSON()) };
+      const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='fieldar-overlays.json'; a.click();
+    }
   </script>
 </body>
 </html>
