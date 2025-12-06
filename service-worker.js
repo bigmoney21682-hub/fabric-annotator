@@ -9,8 +9,8 @@ const FILES_TO_CACHE = [
   './icons/icon-512.png',
 
   // Adjust these paths based on your repo structure:
-  './dist/annotator.min.js',
-  './dist/annotator.min.css'
+  './dist/fab-annotator.css',
+  './dist/fab-annotator.js'
 ];
 
 self.addEventListener('install', event => {
