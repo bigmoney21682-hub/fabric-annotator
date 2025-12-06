@@ -1,86 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FieldAR Annotator</title>
 
-    <title>FieldAR Annotator</title>
+  <!-- Manifest for PWA -->
+  <link rel="manifest" href="./manifest.json">
 
-    <!-- Manifest for PWA -->
-    <link rel="manifest" href="./manifest.json">
+  <!-- Annotator Styles -->
+  <link rel="stylesheet" href="./dist/fab-annotator.css">
 
-    <!-- iOS PWA support -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
+  <!-- Annotator Script -->
+  <script src="./dist/fab-annotator.js"></script>
 
-    <!-- Annotator Styles -->
-    <link rel="stylesheet" href="./dist/fab-annotator.css">
+  <!-- Register Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js')
+        .then(() => console.log('Service Worker Registered!'))
+        .catch(err => console.error('Service Worker Error:', err));
+    }
+  </script>
 
-    <!-- Annotator Script -->
-    <script src="./dist/fab-annotator.js"></script>
-
-    <!-- Register Service Worker -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./service-worker.js')
-          .then(() => console.log('Service Worker Registered!'))
-          .catch(err => console.error('Service Worker Error:', err));
-      }
-    </script>
-
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: #f0f0f0;
-            font-family: Arial, sans-serif;
-            text-align: center;
-        }
-        #main-container {
-            margin: 10px auto;
-            max-width: 95vw;
-        }
-        #main-image {
-            max-width: 95vw;
-            border: 1px solid #ccc;
-        }
-    </style>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f0f0f0;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    #main-container {
+      margin: 10px auto;
+      max-width: 95vw;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      max-width: 95vw;
+      display: block;
+      margin: 0 auto;
+      background: #fff;
+    }
+  </style>
 </head>
 
 <body>
-    <div id="main-container">
-        <h2>FieldAR Annotator</h2>
+  <div id="main-container">
+    <h2>FieldAR Annotator</h2>
+    <canvas id="main-canvas" width="800" height="600"></canvas>
+  </div>
 
-        <!-- Example Image Used for Annotating -->
-        <!-- Replace with your real image later -->
-        <img id="main-image" src="./icons/Blue_GCPA-removebg-preview.png" alt="Base Image">
-    </div>
+  <script>
+    // Initialize FieldAR on the canvas
+    window.onload = function () {
+      const canvasEl = "#main-canvas";
 
-    <script>
-        // Wait for image to load before initializing canvas
-        window.onload = function () {
-            const img = document.getElementById("main-image");
+      if (!canvasEl) {
+        console.error("Canvas element not found!");
+        return;
+      }
 
-            if (!img) {
-                console.error("main-image not found!");
-                return;
-            }
+      console.log("Initializing annotator on canvas...");
 
-            console.log("Image loaded, initializing annotator...");
-
-            annoFabric.initCanvas("#main-image", {
-                annotationTextField:
-                    "<select class='form-control' name='annotation-text-field'>" +
-                        "<option value='Tag 1'>Tag 1</option>" +
-                        "<option value='Tag 2'>Tag 2</option>" +
-                        "<option value='Tag 3'>Tag 3</option>" +
-                    "</select>",
-
-                canvasHeight: img.naturalHeight,
-                 canvasWidth: img.naturalWidth
-            });
-        };
-    </script>
-
+      annoFabric.initCanvas(canvasEl, {
+        annotationTextField:
+          "<select class='form-control' name='annotation-text-field'>" +
+          "<option value='Tag 1'>Tag 1</option>" +
+          "<option value='Tag 2'>Tag 2</option>" +
+          "<option value='Tag 3'>Tag 3</option>" +
+          "</select>",
+        canvasHeight: 600,
+        canvasWidth: 800
+      });
+    };
+  </script>
 </body>
 </html>
