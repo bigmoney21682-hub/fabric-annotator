@@ -11,8 +11,11 @@
     canvas{display:block;width:100vw !important;height:100vh !important}
     .toolbar{position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);padding:12px 8px;text-align:center;z-index:9999}
     button{margin:4px 8px;padding:14px 18px;background:#fff;border:none;border-radius:12px;font-size:16px;font-weight:bold}
+    select{padding:4px;margin-left:8px;font-size:16px}
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <!-- Optional: include fabric-annotator JS if you want polygons -->
+  <!-- <script src="fabric-annotator.js"></script> -->
 </head>
 <body>
 
@@ -50,11 +53,18 @@ document.getElementById('pick').onchange = e => {
   reader.readAsDataURL(file);
 };
 
-// Tools
+// Toolbar tools
 function addRect()   { canvas.add(new fabric.Rect({left:100,top:100,width:200,height:120,fill:'rgba(255,0,0,0.5)',stroke:'#ff0',strokeWidth:5})); }
 function addCircle() { canvas.add(new fabric.Circle({left:200,top:200,radius:100,fill:'rgba(0,255,255,0.5)',stroke:'#0ff',strokeWidth:5})); }
 function addArrow()  { canvas.add(new fabric.Path('M 0 0 L 100 0 L 100 30 L 150 15 L 100 0 L 100 -30 L 100 0 Z', {left:150,top:150,fill:'yellow',stroke:'orange',strokeWidth:6})); }
-function addText()   { const txt = new fabric.Textbox('EDIT ME',{left:100,top:100,fontSize:50,fill:'#ffff00',backgroundColor:'rgba(0,0,0,0.6)',fontWeight:'bold'}); canvas.add(txt); canvas.setActiveObject(txt); txt.enterEditing(); }
+function addText()   { 
+  const txt = new fabric.Textbox('EDIT ME', {left:100,top:100,fontSize:50,fill:'#ffff00',backgroundColor:'rgba(0,0,0,0.6)',fontWeight:'bold'});
+  canvas.add(txt); 
+  canvas.setActiveObject(txt); 
+  txt.enterEditing();
+}
+
+// Export overlays
 function exportJSON() {
   const data = { imageWidth: bgImg?.width, imageHeight: bgImg?.height, overlays: canvas.getObjects().map(o => o.toJSON()) };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -65,12 +75,26 @@ function exportJSON() {
 // Auto-open picker
 setTimeout(() => document.getElementById('pick').click(), 600);
 
+// Optional: load background (if needed)
+function loadBg() {
+  if(bgImg) {
+    canvas.setBackgroundImage(bgImg, canvas.renderAll.bind(canvas), { scaleX: 1, scaleY: 1 });
+  }
+}
+
 // Service Worker registration
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/fabric-annotator/service-worker.js')
     .then(()=>console.log('Service Worker registered!'))
     .catch(err=>console.error('SW registration failed:', err));
 }
+
+/* -----------------------------
+Optional polygon/fabric-annotator integration:
+
+// Example usage if you include fabric-annotator.js
+// annoFabric.initCanvas("#c", { canvasHeight: canvas.height, canvasWidth: canvas.width });
+----------------------------- */
 </script>
 </body>
 </html>
