@@ -3,37 +3,102 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FieldAR Annotator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-body { margin:0; font-family:sans-serif; background:#222; color:white; }
-#toolbar { position:fixed; top:10px; left:10px; display:flex; gap:10px; z-index:10; }
-#toolbar button { padding:8px 14px; font-size:16px; }
-#annotatorCanvas { position:absolute; top:0; left:0; border:1px solid #555; }
-#debugConsole { position:fixed; bottom:0; left:0; width:100%; max-height:200px; overflow-y:auto; background:#111; color:#0f0; font-family:monospace; font-size:12px; padding:5px; box-sizing:border-box;}
+    body {
+        margin: 0;
+        padding: 0;
+        background: #222;
+        font-family: Arial, sans-serif;
+        color: #eee;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    /* Toolbar */
+    #toolbar {
+        background: #111;
+        padding: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        border-bottom: 2px solid #444;
+    }
+
+    #toolbar button {
+        padding: 8px 12px;
+        background: #333;
+        border: 1px solid #666;
+        color: #fff;
+        cursor: pointer;
+        border-radius: 4px;
+    }
+
+    #toolbar button:hover {
+        background: #444;
+    }
+
+    #annotatorCanvas {
+        display: block;
+        background: #333;
+    }
+
+    #debugConsole {
+        height: 160px;
+        overflow-y: auto;
+        background: #000;
+        color: #0f0;
+        font-size: 12px;
+        padding: 6px;
+        border-top: 2px solid #444;
+    }
+
+    input[type=file] {
+        display: none;
+    }
 </style>
 </head>
+
 <body>
 
+<!-- ⭐ Toolbar -->
 <div id="toolbar">
     <button id="undoBtn">Undo</button>
     <button id="redoBtn">Redo</button>
-    <button id="polygonBtn">Polygon Draw</button>
+
+    <button id="polygonBtn">Polygon</button>
+    <button id="finishPolygonBtn">Finish Polygon</button>
+
+    <label for="imageLoader" style="background:#333; padding:8px 12px; border:1px solid #666; border-radius:4px; cursor:pointer;">
+        Select Image
+    </label>
     <input type="file" id="imageLoader" accept="image/*">
+
+    <button id="exportBtn">Export</button>
+
+    <label for="importFile" style="background:#333; padding:8px 12px; border:1px solid #666; border-radius:4px; cursor:pointer;">
+        Import
+    </label>
+    <input type="file" id="importFile" accept="application/json" />
 </div>
 
+<!-- ⭐ Main Canvas -->
 <canvas id="annotatorCanvas"></canvas>
-<div id="debugConsole"></div>
 
-<script type="module" src="fieldar.js"></script>
+<!-- ⭐ Debug Console -->
+<div id="debugConsole">[LOG] Page loaded…<br></div>
 
-<script>
-// Quick log to debug console
-const debugConsole = document.getElementById("debugConsole");
-function log(msg){ console.log(msg); debugConsole.innerHTML += `[LOG] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight; }
-log("🖥 Debug console initialized");
-</script>
+<!-- ⭐ Scripts (ORDER MATTERS!) -->
+<!-- 1️⃣ FabricJS (must load FIRST) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+
+<!-- 2️⃣ Your Annotator Logic -->
+<script src="fieldar.js"></script>
 
 </body>
 </html>
