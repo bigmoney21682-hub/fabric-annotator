@@ -1,167 +1,169 @@
 <!-- FILE: index.html -->
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1.0" />
-<title>FieldAR -- Full UI</title>
-
-<!-- Fabric.js (CDN) - must load before our scripts -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
-
-<!-- Core + UI -->
-<script src="./fieldar-core.js"></script>
-<script src="./fieldar-ui.js" defer></script>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>FieldAR -- Annotator</title>
 
 <style>
-:root{
-  --bg:#0f0f12; --panel:#151618; --muted:#9aa; --accent:#2b7bff; --danger:#ff4d4d;
-  --toolbar-h:56px;
-}
-html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Inter,system-ui,Arial,Helvetica,sans-serif}
-#app {
-  display:flex;
-  height:100vh;
-  width:100vw;
-  overflow:hidden;
-}
+  :root{
+    --bg:#111;
+    --panel:#161616;
+    --accent:#2b7bff;
+    --btn:#2b2b2b;
+    --text:#eaeaea;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+  #app { display:flex; height:100vh; width:100vw; overflow:hidden; align-items:stretch; }
 
-/* LEFT SIDEBAR (overlay manager) */
-#sidebar {
-  width:220px;
-  min-width:160px;
-  background:linear-gradient(180deg,#111,#0c0c0d);
-  border-right:1px solid #0b0b0b;
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-}
-#sidebar .title { padding:12px 10px; font-weight:700; font-size:14px; color:var(--muted) }
-#overlayList { flex:1; overflow:auto; padding:8px; gap:8px; display:flex; flex-direction:column; }
-.overlay-item { display:flex; align-items:center; gap:8px; padding:8px; background:#0b0b0c; border-radius:8px; border:1px solid #111 }
-.overlay-thumb { width:44px; height:44px; object-fit:cover; border-radius:6px; background:#222 }
-.overlay-meta { flex:1; font-size:13px; color:#ddd }
-.overlay-controls button { margin-left:6px }
+  /* Side panel (overlay list) */
+  #sidePanel {
+    width: 260px;
+    min-width: 200px;
+    max-width: 320px;
+    background:var(--panel);
+    border-right:1px solid #202020;
+    display:flex;
+    flex-direction:column;
+    transition:transform .22s ease;
+    z-index:50;
+  }
+  #sidePanel.hidden { transform: translateX(-100%); }
 
-/* MAIN AREA contains toolbar + canvas container */
-#main {
-  flex:1;
-  display:flex;
-  flex-direction:column;
-  align-items:stretch;
-}
+  #sideHeader { padding:10px; border-bottom:1px solid #222; display:flex; justify-content:space-between; align-items:center; gap:6px;}
+  #sideHeader h4 { margin:0; font-size:14px; font-weight:600; color:var(--text); }
+  #overlayList { overflow:auto; padding:8px; flex:1; }
+  .overlayItem { background:#101010; border:1px solid #222; margin-bottom:8px; padding:8px; border-radius:6px; display:flex; gap:8px; align-items:center; cursor:pointer; }
+  .overlayItem.selected { outline:2px solid #FFD400; background:#181818; }
+  .overlayThumb { width:48px; height:36px; object-fit:cover; border-radius:4px; background:#000; border:1px solid #333; }
+  .overlayMeta { flex:1; font-size:13px; color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .overlayControls { display:flex; gap:6px; }
 
-/* TOP TOOLBAR */
-#toolbar {
-  height:var(--toolbar-h);
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding:6px;
-  background:linear-gradient(180deg, rgba(0,0,0,0.3), rgba(0,0,0,0.06));
-  border-bottom:1px solid rgba(255,255,255,0.02);
-  overflow:auto; /* scrollable when too many buttons */
-  -webkit-overflow-scrolling:touch;
-}
-.toolbar-group { display:flex; gap:6px; align-items:center; margin-right:6px }
-.toolbar button, .toolbar input[type=file], .toolbar select {
-  background:var(--panel); color:#fff; border:1px solid #222; padding:8px 10px; border-radius:8px; cursor:pointer;
-  font-size:14px;
-  white-space:nowrap;
-}
-.toolbar button.active { background:var(--accent); color:#fff; }
+  /* main area */
+  #mainArea { flex:1; position:relative; display:flex; flex-direction:column; min-width:0; }
 
-/* Canvas container */
-#canvasWrap {
-  position:relative;
-  flex:1;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  overflow:hidden;
-  background:linear-gradient(180deg,#050506,#0a0a0b);
-}
+  /* Toolbar minimal */
+  #toolbar {
+    height:48px;
+    min-height:48px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:6px;
+    background:linear-gradient(180deg,#111,#0f0f0f);
+    border-bottom:1px solid #222;
+    z-index:60;
+  }
+  .btn {
+    background:var(--btn);
+    color:var(--text);
+    border:1px solid #2a2a2a;
+    padding:8px 10px;
+    border-radius:8px;
+    font-size:13px;
+    cursor:pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn.ghost { background:transparent; border:1px dashed #333; }
+  .btn.small { padding:10px 12px; font-size:14px; border-radius:8px; }
 
-/* make canvas centered but allow panning via transforms */
-#annotatorCanvas { background: #000; display:block; }
+  /* Canvas container */
+  #canvasWrap { position:relative; flex:1; display:flex; align-items:center; justify-content:center; background:#222; overflow:hidden; }
+  canvas { background:#333; display:block; max-width:100%; max-height:100%; }
 
-#debugConsole {
-  height:140px;
-  overflow:auto;
-  background:#000;
-  color:#0f0;
-  font-family:monospace;
-  font-size:12px;
-  padding:8px;
-  border-top:1px solid #111;
-}
+  /* debug console */
+  #debugConsole {
+    height:140px;
+    background:#060606;
+    color:#0f0;
+    font-family:monospace;
+    font-size:12px;
+    overflow:auto;
+    padding:8px;
+    box-sizing:border-box;
+    border-top:1px solid #111;
+  }
 
-/* small screens adjust sidebar behavior */
-@media (max-width:900px){
-  #sidebar { display:none } /* default hide; user can toggle */
-  #toolbar { height:64px; }
-  #overlayList { padding:6px }
-}
+  /* top-right toggles */
+  #floatingControls { position:absolute; top:8px; right:8px; display:flex; gap:6px; z-index:70; }
+  .floatBtn { background:rgba(0,0,0,0.45); padding:10px; border-radius:8px; border:1px solid #222; color:var(--text); cursor:pointer; font-size:14px; -webkit-tap-highlight-color: transparent; }
+
+  /* overlay list mobile spacing */
+  .overlayItem > img { flex: 0 0 auto; }
+  .overlayItem > .overlayMeta { padding-right:8px; }
+
+  /* responsive behavior */
+  @media (orientation:portrait) {
+    /* hide side panel by default in portrait */
+    #sidePanel { transform: translateX(-100%); }
+  }
 </style>
 </head>
 <body>
-
 <div id="app">
-  <div id="sidebar" aria-hidden="false">
-    <div class="title">Overlays</div>
+
+  <!-- Side panel (overlays list) -->
+  <aside id="sidePanel" aria-hidden="false">
+    <div id="sideHeader">
+      <h4>Overlays</h4>
+      <div>
+        <button id="toggleSideBtn" class="btn small">Hide</button>
+      </div>
+    </div>
     <div id="overlayList"></div>
-    <div style="padding:8px;border-top:1px solid #101;display:flex;gap:6px">
-      <button id="toggleSidebarBtn">Hide Sidebar</button>
-      <button id="clearAllOverlaysBtn" style="background:var(--danger)">Clear All</button>
+    <div style="padding:8px;border-top:1px solid #222;">
+      <button id="sideClearBtn" class="btn small">Clear All</button>
     </div>
-  </div>
+  </aside>
 
-  <div id="main">
-    <div id="toolbar" class="toolbar">
-      <div class="toolbar-group">
-        <label style="display:inline-flex;align-items:center;gap:8px">
-          <input id="machinePicker" type="file" accept="image/*" style="display:none">
-          <button id="btnMachine">Select Machine Image</button>
-        </label>
+  <!-- Main area -->
+  <div id="mainArea">
 
-        <label style="display:inline-flex;align-items:center;gap:8px">
-          <input id="overlayPicker" type="file" accept="image/*" style="display:none">
-          <button id="btnOverlay">Select Overlay Image</button>
-        </label>
+    <!-- Top toolbar -->
+    <div id="toolbar">
+      <button id="showHideToolbarBtn" class="btn small">Hide UI</button>
 
-        <button id="btnAddText">Add Text</button>
-        <button id="btnRect">Add Rectangle</button>
-        <button id="btnArrow">Add Arrow</button>
-        <button id="btnPolygon">Polygon Draw</button>
-        <button id="btnFinalizePolygon">Finalize Polygon</button>
-      </div>
+      <label for="baseImageInput" class="btn small" style="cursor:pointer;">Load Base Image</label>
+      <input id="baseImageInput" type="file" accept="image/*" style="display:none">
 
-      <div class="toolbar-group">
-        <button id="btnMove">Move/Select</button>
-        <button id="btnDelete">Delete Selected</button>
-      </div>
+      <label for="addOverlayInput" class="btn small" style="cursor:pointer;">Add Overlay</label>
+      <input id="addOverlayInput" type="file" accept="image/*" style="display:none">
 
-      <div class="toolbar-group">
-        <button id="btnUndo">Undo</button>
-        <button id="btnRedo">Redo</button>
-      </div>
+      <button id="deleteBtn" class="btn small">Delete Selected</button>
 
-      <div class="toolbar-group" style="margin-left:auto">
-        <button id="btnImport">Import JSON</button>
-        <input id="importFile" type="file" accept="application/json" style="display:none">
-        <button id="btnExport">Export JSON</button>
-        <button id="btnPNG">Save PNG</button>
-        <button id="btnToggleUI">Toggle UI</button>
-      </div>
+      <button id="saveBtn" class="btn small">Save Project</button>
+      <button id="loadBtn" class="btn small">Load Project</button>
+      <input id="loadProjectFile" type="file" accept="application/json" style="display:none">
+
+      <button id="convertPngBtn" class="btn small">Convert Base → PNG</button>
+
+      <button id="removeBgBtn" class="btn small">Remove BG (stub)</button>
+
+      <div style="flex:1"></div>
+
+      <button id="undoBtn" class="btn small">Undo</button>
+      <button id="redoBtn" class="btn small">Redo</button>
     </div>
 
+    <!-- canvas area -->
     <div id="canvasWrap">
       <canvas id="annotatorCanvas"></canvas>
+
+      <!-- floating controls -->
+      <div id="floatingControls">
+        <button id="polygonBtn" class="floatBtn">Polygon</button>
+        <button id="completePolygonBtn" class="floatBtn">Finish</button>
+      </div>
     </div>
 
-    <div id="debugConsole" aria-live="polite"></div>
+    <!-- Debug console -->
+    <div id="debugConsole">[LOG] Debug console ready<br></div>
   </div>
 </div>
 
+<!-- include fabric before our script -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+<script src="fieldar.js"></script>
 </body>
 </html>
