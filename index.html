@@ -12,9 +12,6 @@ body { margin:0; overflow:hidden; background:#222; color:white; font-family:sans
 #toolbar button, #toolbar input {padding:8px 14px; font-size:16px;}
 #annotatorCanvas {position:absolute; top:0; left:0;}
 #debugConsole {position:fixed; bottom:0; left:0; width:100%; max-height:200px; overflow-y:auto; background:#222; color:#0f0; font-family:monospace; font-size:12px; padding:5px; box-sizing:border-box;}
-#annotationModal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#333;color:white;padding:15px;border-radius:8px;display:none; z-index:10001;}
-#annotationModal input{width:200px;padding:5px;}
-#annotationModal button{margin-left:10px;}
 </style>
 </head>
 <body>
@@ -31,13 +28,6 @@ body { margin:0; overflow:hidden; background:#222; color:white; font-family:sans
 
 <canvas id="annotatorCanvas"></canvas>
 <div id="debugConsole"></div>
-
-<!-- Simple Annotation Modal -->
-<div id="annotationModal">
-    <input id="annotationText" placeholder="Enter text">
-    <button id="annotationSave">Save</button>
-    <button id="annotationCancel">Cancel</button>
-</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/6.0.0/fabric.min.js"></script>
 <script>
@@ -119,37 +109,24 @@ canvas.on('mouse:dblclick', function(){
     lineArray.forEach(l=>canvas.remove(l));
     canvas.remove(activeShape);
 
+    // Add editable textbox
     let polygon = new fabric.Polygon(points, {stroke:'#333', strokeWidth:1, fill:'rgba(0,0,0,0.2)'});
-    let text = new fabric.Text('Tap to Edit', {left:polygon.left, top:polygon.top, fontSize:12, fill:'white', visible:true});
-    currentGroup = new fabric.Group([polygon,text], {left:polygon.left, top:polygon.top});
+    let textbox = new fabric.Textbox('Tap to Edit', {
+        left: polygon.left,
+        top: polygon.top,
+        fontSize:14,
+        fill:'white',
+        backgroundColor:'rgba(0,0,0,0.3)',
+        editable:true
+    });
+
+    currentGroup = new fabric.Group([polygon, textbox], {left:polygon.left, top:polygon.top});
     canvas.add(currentGroup);
+
     polygonMode=false; pointArray=[]; lineArray=[]; activeShape=null; activeLine=null;
     saveState();
-    log("Polygon completed");
-
-    // Show annotation modal immediately
-    document.getElementById("annotationModal").style.display='block';
-    document.getElementById("annotationText").value='';
+    log("Polygon completed with editable label");
 });
-
-// Annotation modal buttons
-document.getElementById("annotationSave").onclick = ()=>{
-    if(currentGroup){
-        let txt=document.getElementById("annotationText").value;
-        currentGroup.item(1).set({text:txt});
-        canvas.renderAll();
-    }
-    document.getElementById("annotationModal").style.display='none';
-    currentGroup=null;
-};
-document.getElementById("annotationCancel").onclick = ()=>{
-    document.getElementById("annotationModal").style.display='none';
-    if(currentGroup){
-        canvas.remove(currentGroup);
-        canvas.renderAll();
-        currentGroup=null;
-    }
-};
 
 // Image loader
 document.getElementById("imageLoader").onchange = function(e){
