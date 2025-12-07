@@ -2,91 +2,216 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FieldAR Annotator</title>
-    <style>
-        body {
-            margin:0;
-            background:#222;
-            color:white;
-            font-family:sans-serif;
-            overflow:hidden;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FieldAR Annotator</title>
+<style>
+    body {
+        margin:0;
+        background:#222;
+        color:white;
+        font-family:sans-serif;
+        overflow:hidden;
+    }
 
-        #toolbar {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            z-index: 10;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
+    #toolbar {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
 
-        #toolbar button {
-            padding: 8px 12px;
-            font-size: 14px;
-            background:#2b7bff;
-            border:none;
-            color:white;
-            border-radius:5px;
-            cursor:pointer;
-        }
+    #toolbar button {
+        padding: 8px 12px;
+        font-size: 14px;
+        background:#2b7bff;
+        border:none;
+        color:white;
+        border-radius:5px;
+        cursor:pointer;
+    }
 
-        #toolbar input[type=file] {
-            cursor:pointer;
-        }
+    #toolbar input[type=file] {
+        cursor:pointer;
+    }
 
-        #annotatorCanvas {
-            position:absolute;
-            top:0;
-            left:0;
-            background:#444;
-        }
+    #annotatorCanvas {
+        position:absolute;
+        top:0;
+        left:0;
+        background:#444;
+    }
 
-        #debugConsole {
-            position: fixed;
-            bottom:0;
-            left:0;
-            width:100%;
-            max-height:200px;
-            overflow-y:auto;
-            background:#111;
-            color:#0f0;
-            font-family:monospace;
-            font-size:12px;
-            padding:5px;
-            box-sizing:border-box;
-        }
-    </style>
+    #debugConsole {
+        position: fixed;
+        bottom:0;
+        left:0;
+        width:100%;
+        max-height:200px;
+        overflow-y:auto;
+        background:#111;
+        color:#0f0;
+        font-family:monospace;
+        font-size:12px;
+        padding:5px;
+        box-sizing:border-box;
+    }
+</style>
 </head>
 <body>
 
-    <div id="toolbar">
-        <button id="undoBtn">Undo</button>
-        <button id="redoBtn">Redo</button>
-        <button id="drawPolygonBtn">Draw Polygon</button>
-        <input type="file" id="imageLoader" accept="image/*">
-        <button id="exportBtn">Export Overlays</button>
-        <button id="importBtn">Import Overlays</button>
-        <input type="file" id="importFile" accept="application/json" style="display:none">
-        <button id="completePolygonBtn">Complete Polygon</button>
-    </div>
+<div id="toolbar">
+    <button id="undoBtn">Undo</button>
+    <button id="redoBtn">Redo</button>
+    <button id="drawPolygonBtn">Draw Polygon</button>
+    <input type="file" id="imageLoader" accept="image/*">
+    <button id="exportBtn">Export Overlays</button>
+    <button id="importBtn">Import Overlays</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none">
+    <button id="completePolygonBtn">Complete Polygon</button>
+</div>
 
-    <canvas id="annotatorCanvas"></canvas>
-    <div id="debugConsole"></div>
+<canvas id="annotatorCanvas"></canvas>
+<div id="debugConsole"></div>
 
-    <!-- MAIN SCRIPT -->
-    <script type="module" src="fieldar.js"></script>
+<script type="module" src="fieldar.js"></script>
 
-    <script>
-        // Complete polygon button hookup
-        document.getElementById("completePolygonBtn").onclick = function(){
-            if(typeof completePolygon === "function"){
-                completePolygon();
-            }
-        };
-    </script>
+<script>
+const debugConsole = document.getElementById("debugConsole");
+function log(msg){ console.log(msg); debugConsole.innerHTML += `[LOG] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight; }
+function error(msg){ console.error(msg); debugConsole.innerHTML += `[ERROR] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight; }
+log("🖥 Debug console initialized");
+
+const canvasEl = document.getElementById("annotatorCanvas");
+const canvas = new fabric.Canvas("annotatorCanvas", { preserveObjectStacking: true });
+window._canvas = canvas;
+
+// Undo / Redo stacks
+let undoStack = [];
+let redoStack = [];
+function saveState(){
+    undoStack.push(JSON.stringify(canvas.toJSON()));
+    redoStack = [];
+}
+canvas.on('object:added', saveState);
+canvas.on('object:modified', saveState);
+canvas.on('object:removed', saveState);
+
+document.getElementById("undoBtn").onclick = ()=>{
+    if(undoStack.length > 0){
+        redoStack.push(JSON.stringify(canvas.toJSON()));
+        const state = undoStack.pop();
+        canvas.loadFromJSON(state, ()=>canvas.renderAll());
+        log("Undo performed");
+    }
+};
+document.getElementById("redoBtn").onclick = ()=>{
+    if(redoStack.length > 0){
+        undoStack.push(JSON.stringify(canvas.toJSON()));
+        const state = redoStack.pop();
+        canvas.loadFromJSON(state, ()=>canvas.renderAll());
+        log("Redo performed");
+    }
+};
+
+// Polygon mode
+let polygonMode = false;
+document.getElementById("drawPolygonBtn").onclick = ()=>{
+    polygonMode = !polygonMode;
+    log("Polygon mode: "+polygonMode);
+};
+let pointArray = [];
+let activeLine = null;
+let activeShape = null;
+
+function completePolygon(){
+    if(pointArray.length<3){ log("Need at least 3 points"); return; }
+    const points = pointArray.map(c=>({ x:c.left, y:c.top }));
+    const polygon = new fabric.Polygon(points, { fill:'rgba(0,0,255,0.3)', stroke:'blue', strokeWidth:2 });
+    canvas.add(polygon);
+    pointArray.forEach(c=>canvas.remove(c));
+    if(activeLine) canvas.remove(activeLine);
+    pointArray=[]; activeLine=null; activeShape=null; polygonMode=false;
+    log("Polygon completed");
+}
+
+// Image loader
+document.getElementById("imageLoader").onchange = function(e){
+    let reader = new FileReader();
+    reader.onload = function(event){
+        fabric.Image.fromURL(event.target.result, function(img){
+            const maxW = window.innerWidth;
+            const maxH = window.innerHeight;
+            let scale = Math.min(maxW/img.width, maxH/img.height);
+            img.set({ originX:'left', originY:'top', selectable:false });
+            img.scale(scale);
+
+            canvas.setWidth(img.width*scale);
+            canvas.setHeight(img.height*scale);
+            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+
+            saveState();
+            log(`Loaded image: ${img.width}x${img.height}, scaled to fit viewport`);
+        });
+    };
+    reader.readAsDataURL(e.target.files[0]);
+};
+
+// Export / Import
+document.getElementById("exportBtn").onclick = ()=>{
+    const json = JSON.stringify(canvas.toJSON());
+    const blob = new Blob([json], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download="fieldar-overlays.json"; a.click();
+    URL.revokeObjectURL(url);
+    log("Export complete");
+};
+document.getElementById("importBtn").onclick = ()=>{
+    document.getElementById("importFile").click();
+};
+document.getElementById("importFile").onchange = (e)=>{
+    const file = e.target.files[0];
+    if(!file) return error("No file selected");
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+        try{
+            const data = JSON.parse(ev.target.result);
+            canvas.loadFromJSON(data, ()=>canvas.renderAll());
+            saveState();
+            log("Overlays imported: "+canvas.getObjects().length);
+        } catch(err){ error("Failed to parse JSON"); }
+    };
+    reader.readAsText(file);
+};
+
+// Canvas click for polygon points
+canvas.on('mouse:down', function(options){
+    if(!polygonMode) return;
+    const pointer = canvas.getPointer(options.e);
+    const circle = new fabric.Circle({ radius:5, fill:'red', left:pointer.x, top:pointer.y, originX:'center', originY:'center', selectable:false });
+    canvas.add(circle);
+    pointArray.push(circle);
+
+    if(activeShape){
+        const points = activeShape.get("points");
+        points.push({x:pointer.x, y:pointer.y});
+        activeShape.set({points});
+    } else {
+        activeShape = new fabric.Polygon([{x:pointer.x, y:pointer.y}], { fill:'rgba(0,0,255,0.1)', stroke:'blue', strokeWidth:2, selectable:false });
+        canvas.add(activeShape);
+    }
+
+    if(pointArray.length>1){
+        if(activeLine) canvas.remove(activeLine);
+        const last = pointArray[pointArray.length-2];
+        activeLine = new fabric.Line([last.left,last.top,pointer.x,pointer.y], { stroke:'blue', strokeWidth:2, selectable:false });
+        canvas.add(activeLine);
+    }
+});
+</script>
 </body>
 </html>
