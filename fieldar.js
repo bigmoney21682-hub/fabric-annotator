@@ -227,4 +227,38 @@ function createPolygonGroup(points) {
 
     canvas.add(group);
     canvas.renderAll();
-    return group
+    return group;
+}
+
+// =====================
+// Import / Export
+// =====================
+function exportJSON() {
+    const json = JSON.stringify(canvas.toJSON());
+    const blob = new Blob([json], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "fieldar-overlays.json";
+    a.click();
+    log("Exported JSON, size: " + json.length);
+}
+
+function importJSON(file) {
+    const reader = new FileReader();
+    reader.onload = function(e){
+        try {
+            const data = JSON.parse(e.target.result);
+            canvas.loadFromJSON(data, () => canvas.renderAll());
+            saveState();
+            log("Imported JSON, objects: " + canvas.getObjects().length);
+        } catch(err) {
+            error("Failed to parse JSON");
+        }
+    };
+    reader.readAsText(file);
+}
+
+// =====================
+// Initialize
+// =====================
+document.addEventListener("DOMContentLoaded", initCanvas);
