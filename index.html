@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>FieldAR -- Annotator</title>
+<title>FieldAR -- Annotator (Overlay Manager Modal)</title>
 
 <style>
   :root{
@@ -16,29 +16,6 @@
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
   #app { display:flex; height:100vh; width:100vw; overflow:hidden; align-items:stretch; }
-
-  /* Side panel (overlay list) */
-  #sidePanel {
-    width: 260px;
-    min-width: 200px;
-    max-width: 320px;
-    background:var(--panel);
-    border-right:1px solid #202020;
-    display:flex;
-    flex-direction:column;
-    transition:transform .22s ease;
-    z-index:50;
-  }
-  #sidePanel.hidden { transform: translateX(-100%); }
-
-  #sideHeader { padding:10px; border-bottom:1px solid #222; display:flex; justify-content:space-between; align-items:center; gap:6px;}
-  #sideHeader h4 { margin:0; font-size:14px; font-weight:600; color:var(--text); }
-  #overlayList { overflow:auto; padding:8px; flex:1; }
-  .overlayItem { background:#101010; border:1px solid #222; margin-bottom:8px; padding:8px; border-radius:6px; display:flex; gap:8px; align-items:center; cursor:pointer; }
-  .overlayItem.selected { outline:2px solid #FFD400; background:#181818; }
-  .overlayThumb { width:48px; height:36px; object-fit:cover; border-radius:4px; background:#000; border:1px solid #333; }
-  .overlayMeta { flex:1; font-size:13px; color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .overlayControls { display:flex; gap:6px; }
 
   /* main area */
   #mainArea { flex:1; position:relative; display:flex; flex-direction:column; min-width:0; }
@@ -65,7 +42,6 @@
     cursor:pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  .btn.ghost { background:transparent; border:1px dashed #333; }
   .btn.small { padding:10px 12px; font-size:14px; border-radius:8px; }
 
   /* Canvas container */
@@ -85,41 +61,50 @@
     border-top:1px solid #111;
   }
 
-  /* top-right toggles */
-  #floatingControls { position:absolute; top:8px; right:8px; display:flex; gap:6px; z-index:70; }
-  .floatBtn { background:rgba(0,0,0,0.45); padding:10px; border-radius:8px; border:1px solid #222; color:var(--text); cursor:pointer; font-size:14px; -webkit-tap-highlight-color: transparent; }
+  /* floating modal (centered card) */
+  .modalBackdrop {
+    position:fixed; inset:0; background:rgba(0,0,0,0.55); display:none; align-items:center; justify-content:center; z-index:200;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .modalBackdrop.visible { display:flex; }
+  .modalCard {
+    width:80%;
+    max-width:980px;
+    max-height:82vh;
+    background:linear-gradient(180deg,#141414,#0f0f0f);
+    border-radius:14px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.7);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    border:1px solid rgba(255,255,255,0.03);
+  }
+  .modalHeader {
+    padding:12px 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #222;
+  }
+  .modalHeader h3{ margin:0; font-size:16px; color:var(--text); }
+  .modalBody { padding:12px; overflow:auto; flex:1; }
+  .modalFooter { padding:10px; border-top:1px solid #111; display:flex; gap:8px; justify-content:flex-end; align-items:center; }
 
-  /* overlay list mobile spacing */
-  .overlayItem > img { flex: 0 0 auto; }
-  .overlayItem > .overlayMeta { padding-right:8px; }
+  .overlayRow {
+    display:flex; gap:10px; align-items:center; padding:8px; border-radius:8px; background:#0f0f0f; margin-bottom:8px; border:1px solid #1a1a1a;
+  }
+  .overlayThumb { width:64px; height:48px; object-fit:cover; border-radius:6px; background:#000; border:1px solid #333; flex:0 0 auto; }
+  .overlayMeta { flex:1; font-size:13px; color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .overlayActions { display:flex; gap:6px; }
 
-  /* responsive behavior */
-  @media (orientation:portrait) {
-    /* hide side panel by default in portrait */
-    #sidePanel { transform: translateX(-100%); }
+  .searchInput { width:100%; padding:8px; margin-bottom:10px; border-radius:8px; background:#111; border:1px solid #222; color:var(--text); }
+
+  /* responsive minor */
+  @media (max-width:600px){
+    .modalCard { width:94%; border-radius:10px; }
+    .overlayThumb { width:56px; height:40px; }
   }
 </style>
 </head>
 <body>
 <div id="app">
-
-  <!-- Side panel (overlays list) -->
-  <aside id="sidePanel" aria-hidden="false">
-    <div id="sideHeader">
-      <h4>Overlays</h4>
-      <div>
-        <button id="toggleSideBtn" class="btn small">Hide</button>
-      </div>
-    </div>
-    <div id="overlayList"></div>
-    <div style="padding:8px;border-top:1px solid #222;">
-      <button id="sideClearBtn" class="btn small">Clear All</button>
-    </div>
-  </aside>
-
-  <!-- Main area -->
   <div id="mainArea">
-
     <!-- Top toolbar -->
     <div id="toolbar">
       <button id="showHideToolbarBtn" class="btn small">Hide UI</button>
@@ -129,6 +114,8 @@
 
       <label for="addOverlayInput" class="btn small" style="cursor:pointer;">Add Overlay</label>
       <input id="addOverlayInput" type="file" accept="image/*" style="display:none">
+
+      <button id="overlayManagerBtn" class="btn small">Overlays</button>
 
       <button id="deleteBtn" class="btn small">Delete Selected</button>
 
@@ -151,14 +138,39 @@
       <canvas id="annotatorCanvas"></canvas>
 
       <!-- floating controls -->
-      <div id="floatingControls">
-        <button id="polygonBtn" class="floatBtn">Polygon</button>
-        <button id="completePolygonBtn" class="floatBtn">Finish</button>
+      <div id="floatingControls" style="position:absolute; top:8px; right:8px; display:flex; gap:8px; z-index:70;">
+        <button id="polygonBtn" class="btn small">Polygon</button>
+        <button id="completePolygonBtn" class="btn small">Finish</button>
       </div>
     </div>
 
     <!-- Debug console -->
     <div id="debugConsole">[LOG] Debug console ready<br></div>
+  </div>
+</div>
+
+<!-- Overlay Manager Modal (floating centered) -->
+<div id="overlayModalBackdrop" class="modalBackdrop" aria-hidden="true">
+  <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="overlayModalTitle">
+    <div class="modalHeader">
+      <h3 id="overlayModalTitle">Overlay Manager</h3>
+      <div>
+        <button id="closeOverlayModal" class="btn small">Close</button>
+      </div>
+    </div>
+
+    <div class="modalBody">
+      <input id="overlaySearch" class="searchInput" placeholder="Search overlays & polygons" />
+      <div id="overlayModalList"></div>
+    </div>
+
+    <div class="modalFooter">
+      <label for="modalAddOverlay" class="btn small" style="cursor:pointer;">Add Overlay</label>
+      <input id="modalAddOverlay" type="file" accept="image/*" style="display:none">
+      <button id="exportProjectBtn" class="btn small">Export Project</button>
+      <button id="importProjectBtn" class="btn small">Import Project</button>
+      <input id="importProjectInput" type="file" accept="application/json" style="display:none">
+    </div>
   </div>
 </div>
 
