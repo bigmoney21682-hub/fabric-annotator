@@ -3,10 +3,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+
+<!-- iOS fullscreen + safe area -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>FieldAR -- Annotator (Overlay Manager Modal)</title>
+
+<!-- PWA manifest -->
+<link rel="manifest" href="manifest.json">
+
+<!-- iOS splash + icon -->
+<link rel="apple-touch-icon" href="icons/icon-512.png">
+
+<title>FieldAR -- Annotator</title>
 
 <style>
   :root{
@@ -15,17 +24,44 @@
     --accent:#2b7bff;
     --btn:#2b2b2b;
     --text:#eaeaea;
+
+    /* Safe-area variables for iOS */
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+    --safe-left: env(safe-area-inset-left);
+    --safe-right: env(safe-area-inset-right);
   }
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
-  #app { display:flex; height:100vh; width:100vw; overflow:hidden; align-items:stretch; }
 
-  /* main area */
-  #mainArea { flex:1; position:relative; display:flex; flex-direction:column; min-width:0; }
+  html,body{
+    height:100%;
+    margin:0;
+    padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  }
 
-  /* Toolbar minimal */
+  #app {
+    display:flex;
+    height:100vh;
+    width:100vw;
+    overflow:hidden;
+    align-items:stretch;
+
+    /* apply safe area padding */
+    padding-top:var(--safe-top);
+    padding-bottom:var(--safe-bottom);
+    padding-left:var(--safe-left);
+    padding-right:var(--safe-right);
+    box-sizing:border-box;
+  }
+
+  /* Side panel removed per your request -- will be replaced with overlay explorer later */
+
+  /* Toolbar */
   #toolbar {
-    height:48px;
-    min-height:48px;
+    height:44px;
+    min-height:44px;
     display:flex;
     align-items:center;
     gap:8px;
@@ -38,19 +74,23 @@
     background:var(--btn);
     color:var(--text);
     border:1px solid #2a2a2a;
-    padding:8px 10px;
-    border-radius:8px;
-    font-size:13px;
+    padding:6px 8px;
+    border-radius:6px;
+    font-size:12px;
     cursor:pointer;
-    -webkit-tap-highlight-color: transparent;
   }
-  .btn.small { padding:10px 12px; font-size:14px; border-radius:8px; }
 
-  /* Canvas container */
-  #canvasWrap { position:relative; flex:1; display:flex; align-items:center; justify-content:center; background:#222; overflow:hidden; }
+  #canvasWrap {
+    position:relative;
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#222;
+    overflow:hidden;
+  }
   canvas { background:#333; display:block; max-width:100%; max-height:100%; }
 
-  /* debug console */
   #debugConsole {
     height:140px;
     background:#060606;
@@ -59,125 +99,86 @@
     font-size:12px;
     overflow:auto;
     padding:8px;
-    box-sizing:border-box;
     border-top:1px solid #111;
   }
 
-  /* floating modal (centered card) */
-  .modalBackdrop {
-    position:fixed; inset:0; background:rgba(0,0,0,0.55); display:none; align-items:center; justify-content:center; z-index:200;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .modalBackdrop.visible { display:flex; }
-  .modalCard {
-    width:80%;
-    max-width:980px;
-    max-height:82vh;
-    background:linear-gradient(180deg,#141414,#0f0f0f);
-    border-radius:14px;
-    box-shadow:0 20px 60px rgba(0,0,0,0.7);
-    overflow:hidden;
+  #floatingControls {
+    position:absolute;
+    top:8px;
+    right:8px;
     display:flex;
-    flex-direction:column;
-    border:1px solid rgba(255,255,255,0.03);
+    gap:6px;
+    z-index:70;
   }
-  .modalHeader {
-    padding:12px 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #222;
-  }
-  .modalHeader h3{ margin:0; font-size:16px; color:var(--text); }
-  .modalBody { padding:12px; overflow:auto; flex:1; }
-  .modalFooter { padding:10px; border-top:1px solid #111; display:flex; gap:8px; justify-content:flex-end; align-items:center; }
-
-  .overlayRow {
-    display:flex; gap:10px; align-items:center; padding:8px; border-radius:8px; background:#0f0f0f; margin-bottom:8px; border:1px solid #1a1a1a;
-  }
-  .overlayThumb { width:64px; height:48px; object-fit:cover; border-radius:6px; background:#000; border:1px solid #333; flex:0 0 auto; }
-  .overlayMeta { flex:1; font-size:13px; color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .overlayActions { display:flex; gap:6px; }
-
-  .searchInput { width:100%; padding:8px; margin-bottom:10px; border-radius:8px; background:#111; border:1px solid #222; color:var(--text); }
-
-  /* responsive minor */
-  @media (max-width:600px){
-    .modalCard { width:94%; border-radius:10px; }
-    .overlayThumb { width:56px; height:40px; }
+  .floatBtn {
+    background:rgba(0,0,0,0.45);
+    padding:8px;
+    border-radius:8px;
+    border:1px solid #222;
+    color:var(--text);
+    cursor:pointer;
+    font-size:13px;
   }
 </style>
 </head>
+
 <body>
 <div id="app">
+
   <div id="mainArea">
+
     <!-- Top toolbar -->
     <div id="toolbar">
-      <button id="showHideToolbarBtn" class="btn small">Hide UI</button>
 
-      <label for="baseImageInput" class="btn small" style="cursor:pointer;">Load Base Image</label>
+      <button id="showHideToolbarBtn" class="btn">Hide UI</button>
+
+      <label for="baseImageInput" class="btn">Load Base</label>
       <input id="baseImageInput" type="file" accept="image/*" style="display:none">
 
-      <label for="addOverlayInput" class="btn small" style="cursor:pointer;">Add Overlay</label>
+      <label for="addOverlayInput" class="btn">Add Overlay</label>
       <input id="addOverlayInput" type="file" accept="image/*" style="display:none">
 
-      <button id="overlayManagerBtn" class="btn small">Overlays</button>
+      <button id="deleteBtn" class="btn">Delete</button>
 
-      <button id="deleteBtn" class="btn small">Delete Selected</button>
-
-      <button id="saveBtn" class="btn small">Save Project</button>
-      <button id="loadBtn" class="btn small">Load Project</button>
+      <button id="saveBtn" class="btn">Save</button>
+      <button id="loadBtn" class="btn">Load</button>
       <input id="loadProjectFile" type="file" accept="application/json" style="display:none">
 
-      <button id="convertPngBtn" class="btn small">Convert Base → PNG</button>
-
-      <button id="removeBgBtn" class="btn small">Remove BG (stub)</button>
+      <button id="convertPngBtn" class="btn">PNG</button>
+      <button id="removeBgBtn" class="btn">BG</button>
 
       <div style="flex:1"></div>
 
-      <button id="undoBtn" class="btn small">Undo</button>
-      <button id="redoBtn" class="btn small">Redo</button>
+      <button id="undoBtn" class="btn">Undo</button>
+      <button id="redoBtn" class="btn">Redo</button>
     </div>
 
-    <!-- canvas area -->
     <div id="canvasWrap">
       <canvas id="annotatorCanvas"></canvas>
 
-      <!-- floating controls -->
-      <div id="floatingControls" style="position:absolute; top:8px; right:8px; display:flex; gap:8px; z-index:70;">
-        <button id="polygonBtn" class="btn small">Polygon</button>
-        <button id="completePolygonBtn" class="btn small">Finish</button>
+      <div id="floatingControls">
+        <button id="polygonBtn" class="floatBtn">Polygon</button>
+        <button id="completePolygonBtn" class="floatBtn">Finish</button>
       </div>
     </div>
 
-    <!-- Debug console -->
     <div id="debugConsole">[LOG] Debug console ready<br></div>
+
   </div>
 </div>
 
-<!-- Overlay Manager Modal (floating centered) -->
-<div id="overlayModalBackdrop" class="modalBackdrop" aria-hidden="true">
-  <div class="modalCard" role="dialog" aria-modal="true" aria-labelledby="overlayModalTitle">
-    <div class="modalHeader">
-      <h3 id="overlayModalTitle">Overlay Manager</h3>
-      <div>
-        <button id="closeOverlayModal" class="btn small">Close</button>
-      </div>
-    </div>
-
-    <div class="modalBody">
-      <input id="overlaySearch" class="searchInput" placeholder="Search overlays & polygons" />
-      <div id="overlayModalList"></div>
-    </div>
-
-    <div class="modalFooter">
-      <label for="modalAddOverlay" class="btn small" style="cursor:pointer;">Add Overlay</label>
-      <input id="modalAddOverlay" type="file" accept="image/*" style="display:none">
-      <button id="exportProjectBtn" class="btn small">Export Project</button>
-      <button id="importProjectBtn" class="btn small">Import Project</button>
-      <input id="importProjectInput" type="file" accept="application/json" style="display:none">
-    </div>
-  </div>
-</div>
-
-<!-- include fabric before our script -->
+<!-- Fabric.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+
+<!-- FieldAR main engine -->
 <script src="fieldar.js"></script>
+
+<!-- PWA Service Worker -->
+<script>
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("service-worker.js");
+}
+</script>
+
 </body>
 </html>
