@@ -2,55 +2,171 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FieldAR Annotator</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FieldAR Annotator</title>
 
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: #222;
-            color: white;
-            font-family: sans-serif;
-        }
+<!-- FABRIC JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 
-        #toolbar {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            z-index: 10;
-            display: flex;
-            gap: 10px;
-        }
-
-        #toolbar button {
-            padding: 8px 14px;
-            font-size: 16px;
-        }
-
-        #annotatorCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-    </style>
+<style>
+body { margin:0; font-family: sans-serif; background:#222; color:white; overflow:hidden; }
+#toolbar { position: fixed; top:10px; left:10px; z-index:1000; display:flex; gap:8px; }
+#toolbar button, #toolbar input[type=file] { padding:8px 12px; font-size:14px; }
+#annotatorCanvas { position:absolute; top:0; left:0; border:1px solid #444; background:#111; }
+#debugConsole { position:fixed; bottom:0; left:0; width:100%; max-height:150px; overflow-y:auto; background:#111; color:#0f0; font-family:monospace; font-size:12px; padding:5px; box-sizing:border-box;}
+</style>
 </head>
 
 <body>
+<div id="toolbar">
+    <button id="undoBtn">Undo</button>
+    <button id="redoBtn">Redo</button>
+    <button id="clearBtn">Clear All</button>
+    <button id="exportBtn">Export</button>
+    <button id="importBtn">Import</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none">
+    <input type="file" id="imageLoader" accept="image/*">
+</div>
 
-    <!-- UI BUTTONS -->
-    <div id="toolbar">
-        <button id="undoBtn">Undo</button>
-        <button id="redoBtn">Redo</button>
-        <input type="file" id="imageLoader" accept="image/*">
-    </div>
+<canvas id="annotatorCanvas"></canvas>
+<div id="debugConsole"></div>
 
-    <!-- MAIN CANVAS -->
-    <canvas id="annotatorCanvas"></canvas>
+<script>
+const debugConsole = document.getElementById("debugConsole");
+function log(msg){ console.log(msg); debugConsole.innerHTML += `[LOG] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight;}
+function error(msg){ console.error(msg); debugConsole.innerHTML += `[ERROR] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight;}
 
-    <!-- MAIN SCRIPT -->
-    <script type="module" src="fieldar.js"></script>
+log("🖥 Debug console initialized");
 
+// ============================
+// GLOBALS
+// ============================
+let canvas = new fabric.Canvas('annotatorCanvas', { selection:true });
+let undoStack = [];
+let redoStack = [];
+let maxUndo = 50;
+
+// Set canvas size to viewport
+function resizeCanvas(){
+    canvas.setWidth(window.innerWidth);
+    canvas.setHeight(window.innerHeight);
+    canvas.renderAll();
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+// ============================
+// OVERLAY SAVE/LOAD
+// ============================
+function saveState(){
+    if(undoStack.length >= maxUndo) undoStack.shift();
+    undoStack.push(JSON.stringify(canvas.toJSON()));
+    redoStack = [];
+    localStorage.setItem("fieldar_overlays", JSON.stringify(canvas.toJSON()));
+    log("Saved canvas state");
+}
+
+// Load from localStorage
+const saved = localStorage.getItem("fieldar_overlays");
+if(saved){
+    try{
+        canvas.loadFromJSON(JSON.parse(saved), canvas.renderAll.bind(canvas));
+        log("Loaded saved overlays");
+    } catch(e){ error("Failed to load saved overlays"); }
+}
+
+// Track changes for undo/redo
+canvas.on('object:added', saveState);
+canvas.on('object:modified', saveState);
+canvas.on('object:removed', saveState);
+
+// ============================
+// UNDO / REDO
+// ============================
+document.getElementById("undoBtn").onclick = ()=>{
+    if(undoStack.length === 0) return;
+    const last = undoStack.pop();
+    redoStack.push(JSON.stringify(canvas.toJSON()));
+    canvas.loadFromJSON(last, canvas.renderAll.bind(canvas));
+    log("Undo performed");
+};
+document.getElementById("redoBtn").onclick = ()=>{
+    if(redoStack.length === 0) return;
+    const last = redoStack.pop();
+    undoStack.push(JSON.stringify(canvas.toJSON()));
+    canvas.loadFromJSON(last, canvas.renderAll.bind(canvas));
+    log("Redo performed");
+};
+
+// ============================
+// CLEAR ALL
+// ============================
+document.getElementById("clearBtn").onclick = ()=>{
+    canvas.clear();
+    saveState();
+    log("Canvas cleared");
+};
+
+// ============================
+// EXPORT / IMPORT
+// ============================
+document.getElementById("exportBtn").onclick = ()=>{
+    const json = JSON.stringify(canvas.toJSON());
+    const blob = new Blob([json], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fieldar-overlays.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    log("Export complete");
+};
+
+document.getElementById("importBtn").onclick = ()=>{
+    document.getElementById("importFile").click();
+};
+
+document.getElementById("importFile").onchange = (e)=>{
+    const file = e.target.files[0];
+    if(!file) return error("No file selected");
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+        try{
+            const data = JSON.parse(ev.target.result);
+            canvas.loadFromJSON(data, canvas.renderAll.bind(canvas));
+            saveState();
+            log("Import complete, objects loaded: "+canvas.getObjects().length);
+        } catch(err){ error("Failed to parse JSON"); }
+    };
+    reader.readAsText(file);
+};
+
+// ============================
+// LOAD IMAGE
+// ============================
+document.getElementById("imageLoader").onchange = (e)=>{
+    const file = e.target.files[0];
+    if(!file) return error("No image selected");
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+        fabric.Image.fromURL(ev.target.result, function(imgObj){
+            // Scale image to canvas
+            imgObj.set({
+                left:0,
+                top:0,
+                selectable:false,
+            });
+            imgObj.scaleToWidth(canvas.getWidth());
+            imgObj.scaleToHeight(canvas.getHeight());
+            canvas.setBackgroundImage(imgObj, canvas.renderAll.bind(canvas));
+            saveState();
+            log("Background image loaded");
+        });
+    };
+    reader.readAsDataURL(file);
+};
+
+</script>
 </body>
 </html>
