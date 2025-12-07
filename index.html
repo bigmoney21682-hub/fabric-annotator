@@ -6,47 +6,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FieldAR Annotator</title>
 
-<link rel="stylesheet" href="./dist/fab-annotator.css">
-
 <style>
-body {
-    margin: 0;
-    overflow: hidden;
-    background: #222;
-    color: white;
-    font-family: sans-serif;
-}
-#toolbar {
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    z-index: 10000;
-    display: flex;
-    gap: 10px;
-}
-#toolbar button, #toolbar input {
-    padding: 8px 14px;
-    font-size: 16px;
-}
-#annotatorCanvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-}
-#debugConsole {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    max-height: 200px;
-    overflow-y: auto;
-    background: #222;
-    color: #0f0;
-    font-family: monospace;
-    font-size: 12px;
-    padding: 5px;
-    box-sizing: border-box;
-}
+body { margin:0; overflow:hidden; background:#222; color:white; font-family:sans-serif;}
+#toolbar {position:fixed; top:10px; left:10px; z-index:10000; display:flex; gap:10px;}
+#toolbar button, #toolbar input {padding:8px 14px; font-size:16px;}
+#annotatorCanvas {position:absolute; top:0; left:0;}
+#debugConsole {position:fixed; bottom:0; left:0; width:100%; max-height:200px; overflow-y:auto; background:#222; color:#0f0; font-family:monospace; font-size:12px; padding:5px; box-sizing:border-box;}
+#annotationModal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#333;color:white;padding:15px;border-radius:8px;display:none; z-index:10001;}
+#annotationModal input{width:200px;padding:5px;}
+#annotationModal button{margin-left:10px;}
 </style>
 </head>
 <body>
@@ -64,38 +32,31 @@ body {
 <canvas id="annotatorCanvas"></canvas>
 <div id="debugConsole"></div>
 
-<script src="./dist/fab-annotator.js"></script>
+<!-- Simple Annotation Modal -->
+<div id="annotationModal">
+    <input id="annotationText" placeholder="Enter text">
+    <button id="annotationSave">Save</button>
+    <button id="annotationCancel">Cancel</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/6.0.0/fabric.min.js"></script>
 <script>
 const debugConsole = document.getElementById("debugConsole");
 function log(msg){ console.log(msg); debugConsole.innerHTML += `[LOG] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight;}
 function error(msg){ console.error(msg); debugConsole.innerHTML += `[ERROR] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight;}
 log("🖥 Debug console initialized");
 
-// -------------------- INIT --------------------
 let canvas = new fabric.Canvas('annotatorCanvas', {selection:true});
-let polygonMode = false;
-let pointArray = [], lineArray = [], activeLine, activeShape;
-let undoStack = [], redoStack = [];
-
-// Set canvas size
 canvas.setHeight(window.innerHeight);
 canvas.setWidth(window.innerWidth);
 
-// Load saved overlays
-let saved = localStorage.getItem("fieldar_overlays");
-if(saved){
-    try{
-        canvas.loadFromJSON(JSON.parse(saved), canvas.renderAll.bind(canvas));
-        log("Restored saved overlays");
-    } catch(e){
-        error("Failed to load saved overlays");
-    }
-}
+let polygonMode=false, pointArray=[], lineArray=[], activeLine=null, activeShape=null, currentGroup=null;
+let undoStack=[], redoStack=[];
 
-// -------------------- SAVE/UNDO --------------------
+// Save state
 function saveState(){
     undoStack.push(JSON.stringify(canvas.toJSON()));
-    redoStack = []; // clear redo stack
+    redoStack=[];
     localStorage.setItem("fieldar_overlays", JSON.stringify(canvas.toJSON()));
     log("Saved canvas state");
 }
@@ -103,11 +64,11 @@ canvas.on('object:added', saveState);
 canvas.on('object:modified', saveState);
 canvas.on('object:removed', saveState);
 
-// Undo/Redo buttons
+// Undo/Redo
 document.getElementById("undoBtn").onclick = ()=>{
     if(undoStack.length>0){
         redoStack.push(JSON.stringify(canvas.toJSON()));
-        let last = undoStack.pop();
+        let last=undoStack.pop();
         canvas.loadFromJSON(last, canvas.renderAll.bind(canvas));
         log("Undo performed");
     }
@@ -115,109 +76,116 @@ document.getElementById("undoBtn").onclick = ()=>{
 document.getElementById("redoBtn").onclick = ()=>{
     if(redoStack.length>0){
         undoStack.push(JSON.stringify(canvas.toJSON()));
-        let last = redoStack.pop();
+        let last=redoStack.pop();
         canvas.loadFromJSON(last, canvas.renderAll.bind(canvas));
         log("Redo performed");
     }
 };
 
-// -------------------- DRAW POLYGON --------------------
+// Draw Polygon toggle
 document.getElementById("drawPolyBtn").onclick = ()=>{
-    polygonMode = !polygonMode;
+    polygonMode=!polygonMode;
     log("Polygon mode: "+polygonMode);
-    if(!polygonMode){ // cancel active polygon
+    if(!polygonMode){
         pointArray.forEach(p=>canvas.remove(p));
         lineArray.forEach(l=>canvas.remove(l));
         pointArray=[]; lineArray=[]; activeLine=null; activeShape=null;
     }
 };
 
-// Polygon click handler
+// Polygon click
 canvas.on('mouse:down', function(options){
     if(!polygonMode) return;
-    const pointer = canvas.getPointer(options.e);
-    let circle = new fabric.Circle({
-        radius:5, fill:pointArray.length===0?'red':'white',
-        left:pointer.x, top:pointer.y, originX:'center', originY:'center', selectable:false
-    });
-    let points = [pointer.x, pointer.y, pointer.x, pointer.y];
-    let line = new fabric.Line(points, {stroke:'#999', strokeWidth:2, selectable:false});
+    let pointer = canvas.getPointer(options.e);
+    let circle = new fabric.Circle({radius:5, fill:pointArray.length===0?'red':'white', left:pointer.x, top:pointer.y, originX:'center', originY:'center', selectable:false});
+    let line = new fabric.Line([pointer.x,pointer.y,pointer.x,pointer.y], {stroke:'#999', strokeWidth:2, selectable:false});
     if(activeShape){
         let pts = activeShape.get('points');
-        pts.push({x:pointer.x, y:pointer.y});
+        pts.push({x:pointer.x,y:pointer.y});
         activeShape.set({points:pts});
-        canvas.remove(activeShape);
-        canvas.add(activeShape);
-        canvas.renderAll();
+        canvas.remove(activeShape); canvas.add(activeShape); canvas.renderAll();
     } else {
-        activeShape = new fabric.Polygon([{x:pointer.x, y:pointer.y}], {
-            stroke:'#333', strokeWidth:1, fill:'rgba(200,200,200,0.2)', selectable:false
-        });
+        activeShape = new fabric.Polygon([{x:pointer.x,y:pointer.y}], {stroke:'#333', strokeWidth:1, fill:'rgba(200,200,200,0.2)', selectable:false});
         canvas.add(activeShape);
     }
-    pointArray.push(circle);
-    lineArray.push(line);
-    canvas.add(circle);
-    canvas.add(line);
+    pointArray.push(circle); lineArray.push(line); canvas.add(circle); canvas.add(line);
 });
 
-// Complete polygon on clicking first point
+// Complete polygon (double-click)
 canvas.on('mouse:dblclick', function(){
     if(!polygonMode || pointArray.length<3) return;
-    const points = pointArray.map(p=>({x:p.left, y:p.top}));
+    let points=pointArray.map(p=>({x:p.left,y:p.top}));
     pointArray.forEach(p=>canvas.remove(p));
     lineArray.forEach(l=>canvas.remove(l));
     canvas.remove(activeShape);
-    const polygon = new fabric.Polygon(points,{
-        stroke:'#333', strokeWidth:1, fill:'rgba(0,0,0,0.2)'
-    });
-    const text = new fabric.Text('Tap and Type', {left:polygon.left, top:polygon.top, fontSize:12, fill:'white', visible:false});
-    const group = new fabric.Group([polygon,text],{left:polygon.left, top:polygon.top});
-    canvas.add(group);
+
+    let polygon = new fabric.Polygon(points, {stroke:'#333', strokeWidth:1, fill:'rgba(0,0,0,0.2)'});
+    let text = new fabric.Text('Tap to Edit', {left:polygon.left, top:polygon.top, fontSize:12, fill:'white', visible:true});
+    currentGroup = new fabric.Group([polygon,text], {left:polygon.left, top:polygon.top});
+    canvas.add(currentGroup);
     polygonMode=false; pointArray=[]; lineArray=[]; activeShape=null; activeLine=null;
     saveState();
     log("Polygon completed");
+
+    // Show annotation modal immediately
+    document.getElementById("annotationModal").style.display='block';
+    document.getElementById("annotationText").value='';
 });
 
-// -------------------- IMAGE LOAD --------------------
+// Annotation modal buttons
+document.getElementById("annotationSave").onclick = ()=>{
+    if(currentGroup){
+        let txt=document.getElementById("annotationText").value;
+        currentGroup.item(1).set({text:txt});
+        canvas.renderAll();
+    }
+    document.getElementById("annotationModal").style.display='none';
+    currentGroup=null;
+};
+document.getElementById("annotationCancel").onclick = ()=>{
+    document.getElementById("annotationModal").style.display='none';
+    if(currentGroup){
+        canvas.remove(currentGroup);
+        canvas.renderAll();
+        currentGroup=null;
+    }
+};
+
+// Image loader
 document.getElementById("imageLoader").onchange = function(e){
     let reader = new FileReader();
     reader.onload = function(event){
         fabric.Image.fromURL(event.target.result, function(img){
             img.set({left:0,top:0,selectable:false});
             canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
-            canvas.setWidth(img.width);
-            canvas.setHeight(img.height);
+            canvas.setWidth(img.width); canvas.setHeight(img.height);
             saveState();
         });
     };
     reader.readAsDataURL(e.target.files[0]);
 };
 
-// -------------------- EXPORT/IMPORT --------------------
+// Export/Import
 document.getElementById("exportBtn").onclick = ()=>{
-    const json = JSON.stringify(canvas.toJSON());
-    const blob = new Blob([json], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "fieldar-overlays.json";
-    a.click();
+    let json=JSON.stringify(canvas.toJSON());
+    let blob=new Blob([json],{type:"application/json"});
+    let url=URL.createObjectURL(blob);
+    let a=document.createElement("a");
+    a.href=url; a.download="fieldar-overlays.json"; a.click();
     URL.revokeObjectURL(url);
     log("Exported canvas JSON, length:"+json.length);
 };
-
-document.getElementById("importBtn").onclick = ()=>{document.getElementById("importFile").click()};
+document.getElementById("importBtn").onclick = ()=>{document.getElementById("importFile").click();};
 document.getElementById("importFile").onchange = (e)=>{
-    const file = e.target.files[0];
+    let file=e.target.files[0];
     if(!file) return error("No file selected");
-    const reader = new FileReader();
+    let reader=new FileReader();
     reader.onload = (ev)=>{
         try{
-            const data = JSON.parse(ev.target.result);
+            let data=JSON.parse(ev.target.result);
             canvas.loadFromJSON(data, canvas.renderAll.bind(canvas));
             saveState();
-            log("Imported JSON, objects: "+canvas.getObjects().length);
+            log("Imported JSON, objects:"+canvas.getObjects().length);
         }catch(err){error("Failed to parse JSON")}
     };
     reader.readAsText(file);
