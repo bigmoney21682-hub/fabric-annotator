@@ -1,5 +1,5 @@
 // FILE: fieldar.js
-// Requires: fabric.js already loaded
+// Fabric.js based FieldAR Annotator
 
 let canvas = new fabric.Canvas('annotatorCanvas');
 let undoStack = [];
@@ -136,20 +136,6 @@ canvas.on('mouse:down', function(options){
     }
 });
 
-// Right-click to finish polygon (optional: can add a button instead)
-canvas.on('mouse:up', function(options){
-    // If last click near first point, finish polygon
-    if(polygonMode && pointArray.length >= 3){
-        let first = pointArray[0];
-        let last = pointArray[pointArray.length-1];
-        let dx = first.left - last.left;
-        let dy = first.top - last.top;
-        if(Math.sqrt(dx*dx + dy*dy) < 10){
-            finishPolygon();
-        }
-    }
-});
-
 // --------------------
 // Export / Import JSON
 // --------------------
@@ -175,12 +161,15 @@ function importJSON(file){
     reader.readAsText(file);
 }
 
-// Example buttons for polygon mode, export/import
-document.getElementById("exportBtn")?.addEventListener('click', exportJSON);
-document.getElementById("importBtn")?.addEventListener('click', ()=>{
-    document.getElementById("importFile")?.click();
+// --------------------
+// Button Event Hooks
+// --------------------
+document.getElementById("exportBtn").addEventListener('click', exportJSON);
+document.getElementById("importBtn").addEventListener('click', ()=>{
+    document.getElementById("importFile").click();
 });
-document.getElementById("polygonBtn")?.addEventListener('click', startPolygonMode);
-document.getElementById("importFile")?.addEventListener('change', function(e){
+document.getElementById("polygonBtn").addEventListener('click', startPolygonMode);
+document.getElementById("finishPolygonBtn").addEventListener('click', finishPolygon);
+document.getElementById("importFile").addEventListener('change', function(e){
     importJSON(e.target.files[0]);
 });

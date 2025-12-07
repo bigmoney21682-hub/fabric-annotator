@@ -5,11 +5,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FieldAR Annotator</title>
+
 <style>
-    body { margin:0; font-family:sans-serif; background:#222; color:white; }
-    #toolbar { position:fixed; top:10px; left:10px; display:flex; gap:8px; z-index:100; }
-    #toolbar button, #toolbar input { padding:8px 12px; font-size:14px; }
-    #annotatorCanvas { position:absolute; top:0; left:0; border:1px solid #555; }
+body { margin:0; overflow:hidden; background:#222; color:white; font-family:sans-serif;}
+#toolbar { position:fixed; top:10px; left:10px; z-index:10; display:flex; gap:10px; }
+#toolbar button, #toolbar input { padding:8px 14px; font-size:16px; }
+canvas { position:absolute; top:0; left:0; }
 </style>
 </head>
 <body>
@@ -17,25 +18,18 @@
 <div id="toolbar">
     <button id="undoBtn">Undo</button>
     <button id="redoBtn">Redo</button>
-    <button id="drawPolyBtn">Draw Polygon</button>
-    <button id="finishPolyBtn">Finish Polygon</button>
-    <input type="file" id="imageLoader" accept="image/*">
+    <button id="polygonBtn">Draw Polygon</button>
+    <button id="finishPolygonBtn">Finish Polygon</button>
     <button id="exportBtn">Export JSON</button>
-    <input type="file" id="importFile" accept="application/json" style="display:none">
     <button id="importBtn">Import JSON</button>
+    <input type="file" id="imageLoader" accept="image/*">
+    <input type="file" id="importFile" accept="application/json" style="display:none">
 </div>
 
 <canvas id="annotatorCanvas"></canvas>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/6.0.0/fabric.min.js"></script>
 <script type="module" src="fieldar.js"></script>
-
-<script>
-document.getElementById("drawPolyBtn").onclick = () => startPolygonMode();
-document.getElementById("finishPolyBtn").onclick = () => finishPolygon();
-document.getElementById("exportBtn").onclick = () => exportJSON();
-document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
-document.getElementById("importFile").onchange = (e) => importJSON(e.target.files[0]);
-</script>
 
 </body>
 </html>
