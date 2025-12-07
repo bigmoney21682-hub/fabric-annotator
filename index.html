@@ -6,74 +6,68 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FieldAR Annotator</title>
 
-<link rel="stylesheet" href="./dist/fab-annotator.css">
-
 <style>
-    body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: #222;
-        color: white;
-    }
-    #toolbar {
-        position: fixed;
-        top: 10px;
-        left: 10px;
-        z-index: 1000;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-    }
-    #toolbar button {
-        padding: 8px 14px;
-        font-size: 14px;
-        cursor: pointer;
-    }
-    #annotatorCanvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-    }
-    #debugConsole {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        max-height: 180px;
-        overflow-y: auto;
-        background: #111;
-        color: #0f0;
-        font-family: monospace;
-        font-size: 12px;
-        padding: 5px;
-        box-sizing: border-box;
-        z-index: 2000;
-    }
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #222;
+    color: white;
+    font-family: sans-serif;
+}
+#toolbar {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    display: flex;
+    gap: 10px;
+}
+#toolbar button {
+    padding: 8px 14px;
+    font-size: 16px;
+    cursor: pointer;
+}
+#annotatorCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+#debugConsole {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #222;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 5px;
+    box-sizing: border-box;
+}
 </style>
 </head>
+
 <body>
 
 <!-- Toolbar -->
 <div id="toolbar">
     <button id="undoBtn">Undo</button>
     <button id="redoBtn">Redo</button>
-    <button id="polygonBtn">Draw Polygon</button>
+    <button id="polygonBtn">Polygon Draw</button>
     <input type="file" id="imageLoader" accept="image/*">
     <button id="exportBtn">Export Overlays</button>
-    <button id="importBtn">Import Overlays</button>
-    <input type="file" id="importFile" accept="application/json" style="display:none">
+    <input type="file" id="importBtn" accept="application/json">
 </div>
 
-<!-- Canvas -->
+<!-- Fabric Canvas -->
 <canvas id="annotatorCanvas"></canvas>
 
 <!-- Debug Console -->
 <div id="debugConsole"></div>
 
-<!-- Fabric.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
-
-<!-- Main Script -->
+<!-- Main JS -->
 <script type="module" src="fieldar.js"></script>
 
 </body>
