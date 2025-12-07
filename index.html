@@ -2,34 +2,91 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FieldAR Annotator</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FieldAR Annotator</title>
+    <style>
+        body {
+            margin:0;
+            background:#222;
+            color:white;
+            font-family:sans-serif;
+            overflow:hidden;
+        }
 
-<style>
-body { margin:0; overflow:hidden; background:#222; color:white; font-family:sans-serif;}
-#toolbar { position:fixed; top:10px; left:10px; z-index:10; display:flex; gap:10px; }
-#toolbar button, #toolbar input { padding:8px 14px; font-size:16px; }
-canvas { position:absolute; top:0; left:0; }
-</style>
+        #toolbar {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        #toolbar button {
+            padding: 8px 12px;
+            font-size: 14px;
+            background:#2b7bff;
+            border:none;
+            color:white;
+            border-radius:5px;
+            cursor:pointer;
+        }
+
+        #toolbar input[type=file] {
+            cursor:pointer;
+        }
+
+        #annotatorCanvas {
+            position:absolute;
+            top:0;
+            left:0;
+            background:#444;
+        }
+
+        #debugConsole {
+            position: fixed;
+            bottom:0;
+            left:0;
+            width:100%;
+            max-height:200px;
+            overflow-y:auto;
+            background:#111;
+            color:#0f0;
+            font-family:monospace;
+            font-size:12px;
+            padding:5px;
+            box-sizing:border-box;
+        }
+    </style>
 </head>
 <body>
 
-<div id="toolbar">
-    <button id="undoBtn">Undo</button>
-    <button id="redoBtn">Redo</button>
-    <button id="polygonBtn">Draw Polygon</button>
-    <button id="finishPolygonBtn">Finish Polygon</button>
-    <button id="exportBtn">Export JSON</button>
-    <button id="importBtn">Import JSON</button>
-    <input type="file" id="imageLoader" accept="image/*">
-    <input type="file" id="importFile" accept="application/json" style="display:none">
-</div>
+    <div id="toolbar">
+        <button id="undoBtn">Undo</button>
+        <button id="redoBtn">Redo</button>
+        <button id="drawPolygonBtn">Draw Polygon</button>
+        <input type="file" id="imageLoader" accept="image/*">
+        <button id="exportBtn">Export Overlays</button>
+        <button id="importBtn">Import Overlays</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none">
+        <button id="completePolygonBtn">Complete Polygon</button>
+    </div>
 
-<canvas id="annotatorCanvas"></canvas>
+    <canvas id="annotatorCanvas"></canvas>
+    <div id="debugConsole"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/6.0.0/fabric.min.js"></script>
-<script type="module" src="fieldar.js"></script>
+    <!-- MAIN SCRIPT -->
+    <script type="module" src="fieldar.js"></script>
 
+    <script>
+        // Complete polygon button hookup
+        document.getElementById("completePolygonBtn").onclick = function(){
+            if(typeof completePolygon === "function"){
+                completePolygon();
+            }
+        };
+    </script>
 </body>
 </html>
