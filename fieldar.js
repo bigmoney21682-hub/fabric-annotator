@@ -12,7 +12,7 @@
   const canvasEl = document.getElementById('annotatorCanvas');
   const baseInput = document.getElementById('baseImageInput');
   const addOverlayInput = document.getElementById('addOverlayInput');
-  const overlayManagerBtn = document.getElementById('overlayManagerBtn');
+  const overlayManagerBtn = document.getElementById('overlayManagerBtn') || document.getElementById('overlay-explorer-toggle');
   const deleteBtn = document.getElementById('deleteBtn');
   const saveBtn = document.getElementById('saveBtn');
   const loadBtn = document.getElementById('loadBtn');
@@ -26,15 +26,15 @@
   const polygonBtn = document.getElementById('polygonBtn');
   const completePolygonBtn = document.getElementById('completePolygonBtn');
 
-  // Modal elements
+  // Modal elements (IDs from your code)
   const modalBackdrop = document.getElementById('overlayModalBackdrop');
-  const modalList = document.getElementById('overlayModalList');
-  const modalSearch = document.getElementById('overlaySearch');
+  const modalList = document.getElementById('overlayModalList') || document.getElementById('explorer-list');
+  const modalSearch = document.getElementById('overlaySearch') || (document.getElementById('overlaySearch') || { addEventListener: ()=>{} });
   const closeModalBtn = document.getElementById('closeOverlayModal');
-  const modalAddOverlay = document.getElementById('modalAddOverlay');
+  const modalAddOverlay = document.getElementById('modalAddOverlay') || document.getElementById('addOverlayInput');
   const exportProjectBtn = document.getElementById('exportProjectBtn');
   const importProjectBtn = document.getElementById('importProjectBtn');
-  const importProjectInput = document.getElementById('importProjectInput');
+  const importProjectInput = document.getElementById('importProjectInput') || document.getElementById('importProjectFile');
 
   // ---------- ensure Fabric ready ----------
   if (typeof fabric === 'undefined') {
@@ -43,9 +43,8 @@
   }
 
   // ---------- canvas init ----------
-  const canvas = new fabric.Canvas('annotatorCanvas', { backgroundColor:'#222', preserveObjectStacking:true });
+  const canvas = new fabric.Canvas('annotatorCanvas', { backgroundColor:'#222', preserveObjectStacking:true, allowTouchScrolling:true });
   window._canvas = canvas;
-  canvas.allowTouchScrolling = true;
   canvas.uniScaleTransform = true;
   log('Canvas created');
 
@@ -53,7 +52,7 @@
   const toolbar = document.getElementById('toolbar');
   function computeAvailableSize(){
     const appWidth = document.documentElement.clientWidth;
-    const appHeight = document.documentElement.clientHeight - (toolbar ? toolbar.offsetHeight : 48) - (dbgEl ? dbgEl.offsetHeight : 140);
+    const appHeight = document.documentElement.clientHeight - (toolbar ? toolbar.offsetHeight : 48) - (dbgEl ? dbgEl.offsetHeight : 70);
     return { w: Math.max(320, appWidth), h: Math.max(240, appHeight) };
   }
   function fitToViewport(){
@@ -129,20 +128,23 @@
   // ---------- Modal: open/close ----------
   function openModal(){
     populateModalList();
-    modalBackdrop.classList.add('visible');
-    modalBackdrop.setAttribute('aria-hidden','false');
-    // ensure focus on search
-    setTimeout(()=>modalSearch.focus(),120);
+    if(modalBackdrop) {
+      modalBackdrop.classList.add('visible');
+      modalBackdrop.setAttribute('aria-hidden','false');
+    }
+    setTimeout(()=>{ try{ modalSearch.focus(); }catch(e){} },120);
   }
   function closeModal(){
-    modalBackdrop.classList.remove('visible');
-    modalBackdrop.setAttribute('aria-hidden','true');
+    if(modalBackdrop) {
+      modalBackdrop.classList.remove('visible');
+      modalBackdrop.setAttribute('aria-hidden','true');
+    }
   }
 
-  overlayManagerBtn.addEventListener('click', openModal);
-  closeModalBtn.addEventListener('click', closeModal);
+  if (overlayManagerBtn) overlayManagerBtn.addEventListener('click', openModal);
+  if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
   // click backdrop to close
-  modalBackdrop.addEventListener('click', (ev)=>{
+  if (modalBackdrop) modalBackdrop.addEventListener('click', (ev)=>{
     if (ev.target === modalBackdrop) closeModal();
   });
 
@@ -206,15 +208,21 @@
     dupBtn.textContent = 'Duplicate';
     dupBtn.onclick = (ev)=>{
       ev.stopPropagation();
-      // clone object
-      obj.clone(function(clone){
-        clone.left = (obj.left || 20) + 16;
-        clone.top = (obj.top || 20) + 16;
-        assignUID(clone);
-        canvas.add(clone);
-        pushState();
-        populateModalList();
-      }, ['uid','overlayName']);
+      // clone object - ensure to include custom props
+      if (obj.clone) {
+        obj.clone(function(clone){
+          clone.left = (obj.left || 20) + 16;
+          clone.top = (obj.top || 20) + 16;
+          assignUID(clone);
+          canvas.add(clone);
+          // if group cloned, add handles
+          if(clone.type === 'group') addVertexHandlesToGroup(clone);
+          pushState();
+          populateModalList();
+        }, ['uid','overlayName']);
+      } else {
+        log('Clone not supported for this object type');
+      }
     };
 
     const delBtn = document.createElement('button');
@@ -223,6 +231,8 @@
     delBtn.onclick = (ev)=>{
       ev.stopPropagation();
       if(!confirm('Delete this item?')) return;
+      // remove associated handles first if present
+      removeHandlesForObject(obj);
       canvas.remove(obj);
       pushState();
       populateModalList();
@@ -248,6 +258,7 @@
   }
 
   function populateModalList(filterText = ''){
+    if(!modalList) return;
     modalList.innerHTML = '';
     const { images, groups } = getOverlaysAndPolygons();
 
@@ -277,10 +288,10 @@
     }
   }
 
-  modalSearch.addEventListener('input', (ev)=> populateModalList(ev.target.value));
+  if(modalSearch && modalSearch.addEventListener) modalSearch.addEventListener('input', (ev)=> populateModalList(ev.target.value));
 
   // ---------- modal add overlay input ----------
-  modalAddOverlay.addEventListener('change', (ev)=>{
+  if(modalAddOverlay) modalAddOverlay.addEventListener('change', (ev)=>{
     const f = ev.target.files && ev.target.files[0];
     if (!f) return;
     const reader = new FileReader();
@@ -302,7 +313,7 @@
   });
 
   // ---------- toolbar file inputs (Add Overlay, Base Image) ----------
-  addOverlayInput.addEventListener('change', (ev)=>{
+  if(addOverlayInput) addOverlayInput.addEventListener('change', (ev)=>{
     const f = ev.target.files && ev.target.files[0];
     if (!f) return;
     const reader = new FileReader();
@@ -324,7 +335,7 @@
     try{ addOverlayInput.value=''; }catch(e){}
   });
 
-  baseInput.addEventListener('change', (ev)=>{
+  if(baseInput) baseInput.addEventListener('change', (ev)=>{
     const f = ev.target.files && ev.target.files[0];
     if (!f) { log('No base image selected'); return; }
     const reader = new FileReader();
@@ -350,10 +361,11 @@
   });
 
   // ---------- delete selected ----------
-  deleteBtn.addEventListener('click', ()=>{
+  if(deleteBtn) deleteBtn.addEventListener('click', ()=>{
     const a = canvas.getActiveObject();
     if (!a) { log('No object selected to delete'); return; }
     if (!confirm('Delete selected item?')) return;
+    removeHandlesForObject(a);
     canvas.remove(a);
     pushState();
     populateModalList();
@@ -370,7 +382,7 @@
     URL.revokeObjectURL(a.href);
   }
 
-  saveBtn.addEventListener('click', ()=>{
+  if(saveBtn) saveBtn.addEventListener('click', ()=>{
     try {
       const canvasJSON = canvas.toJSON(['uid','overlayName']);
       const payload = { baseImageDataUrl: (canvas.backgroundImage && canvas.backgroundImage._element ? canvas.backgroundImage._element.src : null), canvas: canvasJSON, exportedAt: new Date().toISOString() };
@@ -379,8 +391,8 @@
     } catch(e){ err('Save failed: ' + e); }
   });
 
-  loadBtn.addEventListener('click', ()=> loadProjectFile.click());
-  loadProjectFile.addEventListener('change', (ev)=>{
+  if(loadBtn) loadBtn.addEventListener('click', ()=> loadProjectFile.click());
+  if(loadProjectFile) loadProjectFile.addEventListener('change', (ev)=>{
     const f = ev.target.files && ev.target.files[0];
     if (!f) { log('No project file selected'); return; }
     const reader = new FileReader();
@@ -398,11 +410,11 @@
             canvas.setHeight(Math.round(img.height * scale));
             canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
             isRestoring = true;
-            canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); populateModalList(); log('Project loaded'); });
+            canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); populateModalList(); addHandlesForAllGroups(); log('Project loaded'); });
           }, { crossOrigin:'anonymous' });
         } else {
           isRestoring = true;
-          canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); populateModalList(); log('Project loaded (no base image)'); });
+          canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); populateModalList(); addHandlesForAllGroups(); log('Project loaded (no base image)'); });
         }
       } catch(e){ err('Load project parse error: ' + e); }
     };
@@ -411,7 +423,7 @@
   });
 
   // ---------- modal export/import project ----------
-  exportProjectBtn.addEventListener('click', ()=>{
+  if(exportProjectBtn) exportProjectBtn.addEventListener('click', ()=>{
     try {
       const canvasJSON = canvas.toJSON(['uid','overlayName']);
       const payload = { baseImageDataUrl: (canvas.backgroundImage && canvas.backgroundImage._element ? canvas.backgroundImage._element.src : null), canvas: canvasJSON, exportedAt: new Date().toISOString() };
@@ -420,8 +432,8 @@
     } catch(e){ err('Export failed: ' + e); }
   });
 
-  importProjectBtn.addEventListener('click', ()=> importProjectInput.click());
-  importProjectInput.addEventListener('change', (ev)=>{
+  if(importProjectBtn) importProjectBtn.addEventListener('click', ()=> importProjectInput.click());
+  if(importProjectInput) importProjectInput.addEventListener('change', (ev)=>{
     const f = ev.target.files && ev.target.files[0];
     if (!f) return;
     const reader = new FileReader();
@@ -439,11 +451,11 @@
             canvas.setHeight(Math.round(img.height * scale));
             canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
             isRestoring = true;
-            canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); populateModalList(); log('Imported project into modal'); });
+            canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); populateModalList(); addHandlesForAllGroups(); log('Imported project into modal'); });
           }, { crossOrigin:'anonymous' });
         } else {
           isRestoring = true;
-          canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); populateModalList(); log('Imported project into modal (no base image)'); });
+          canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); populateModalList(); addHandlesForAllGroups(); log('Imported project into modal (no base image)'); });
         }
       } catch(e){ err('Import project parse error: ' + e); }
     };
@@ -452,7 +464,7 @@
   });
 
   // ---------- convert to PNG (base) ----------
-  convertPngBtn.addEventListener('click', ()=>{
+  if(convertPngBtn) convertPngBtn.addEventListener('click', ()=>{
     if (!canvas.backgroundImage) { log('No base image to convert'); return; }
     try {
       const bgImg = canvas.backgroundImage;
@@ -476,7 +488,7 @@
   });
 
   // ---------- remove-bg stub ----------
-  removeBgBtn.addEventListener('click', ()=>{ alert('remove.bg stub -- implement API here.'); log('removeBgBtn clicked (stub)'); });
+  if(removeBgBtn) removeBgBtn.addEventListener('click', ()=>{ alert('remove.bg stub -- implement API here.'); log('removeBgBtn clicked (stub)'); });
 
   // ---------- polygon drawing (Finish button) ----------
   let polygonMode = false, tempPoints = [], tempLines = [], previewPoly = null, previewLine = null;
@@ -486,8 +498,8 @@
     if (!polygonMode) cleanupTempDrawing();
     log('Polygon mode ' + (polygonMode ? 'ON' : 'OFF'));
   }
-  polygonBtn.addEventListener('click', ()=> setPolygonMode(!polygonMode));
-  completePolygonBtn.addEventListener('click', ()=> finalizePolygonFromTemp());
+  if(polygonBtn) polygonBtn.addEventListener('click', ()=> setPolygonMode(!polygonMode));
+  if(completePolygonBtn) completePolygonBtn.addEventListener('click', ()=> finalizePolygonFromTemp());
 
   function cleanupTempDrawing(){
     tempPoints.forEach(p=>canvas.remove(p));
@@ -530,29 +542,217 @@
     canvas.renderAll();
   });
 
+  // ---------- Vertex Handles System (NEW) ----------
+  // Purpose: allow direct dragging of polygon vertices (works on groups where first child is polygon).
+  let handlesDirty = false;
+  let activeHandle = null;
+
+  function createHandle(left, top, parentGroup, pointIndex){
+    const h = new fabric.Circle({
+      left, top,
+      radius:7,
+      fill: '#ffffff',
+      stroke: '#000000',
+      strokeWidth: 1.5,
+      originX:'center', originY:'center',
+      hasControls: false,
+      hasBorders: false,
+      selectable: true,
+      hoverCursor: 'pointer',
+      evented: true
+    });
+    h.pointIndex = pointIndex;
+    h.parentGroup = parentGroup;
+    // preserve layering above group
+    h.bringToFront();
+
+    // moving: update polygon point immediately (visual feedback)
+    h.on('moving', function(){
+      if(!h.parentGroup) return;
+      const grp = h.parentGroup;
+      const poly = grp._objects && grp._objects[0] && (grp._objects[0].type === 'polygon' ? grp._objects[0] : null);
+      if(!poly) return;
+      // compute new coords relative to group
+      const newX = h.left - grp.left;
+      const newY = h.top - grp.top;
+      if (!poly.points || !poly.points[h.pointIndex]) return;
+      poly.points[h.pointIndex].x = newX;
+      poly.points[h.pointIndex].y = newY;
+      poly.set({ dirty: true });
+      poly.setCoords();
+      // reposition preview label inside polygon group (if exists)
+      const tb = grp._objects.find(o=>o.isType && o.isType('textbox'));
+      if(tb){
+        tb.left = poly.width / 2;
+        tb.top = poly.height / 2;
+        tb.setCoords();
+      }
+      canvas.requestRenderAll();
+      handlesDirty = true;
+      activeHandle = h;
+    });
+
+    // mouse up: finalize and push state
+    h.on('mouseup', function(){
+      activeHandle = null;
+      if(handlesDirty){
+        handlesDirty = false;
+        pushState();
+        populateModalList();
+      }
+    });
+
+    // attach remove handler when parent removed
+    return h;
+  }
+
+  function addVertexHandlesToGroup(group){
+    // clear existing handles first
+    removeHandlesForObject(group);
+    const poly = group._objects && group._objects[0] && (group._objects[0].type === 'polygon' ? group._objects[0] : null);
+    if(!poly || !poly.points) return;
+    group._handles = [];
+    // ensure group has stable left/top (fabric may store bbox)
+    group.setCoords();
+    for(let i=0;i<poly.points.length;i++){
+      const pt = poly.points[i];
+      const hx = group.left + pt.x;
+      const hy = group.top + pt.y;
+      const handle = createHandle(hx, hy, group, i);
+      canvas.add(handle);
+      group._handles.push(handle);
+    }
+    // bring handles above everything
+    group._handles.forEach(h => h.bringToFront());
+  }
+
+  function removeHandlesForObject(obj){
+    try {
+      if(!obj) return;
+      if(obj._handles && Array.isArray(obj._handles)){
+        obj._handles.forEach(h => { try{ canvas.remove(h); }catch(e){} });
+        obj._handles = [];
+      }
+      // if obj is group and its children have handles stored separately, attempt cleanup
+      if(obj.type === 'group' && obj._handles) obj._handles = [];
+    } catch(e){}
+  }
+
+  // update handle positions when group moves/resizes
+  function updateHandlesForGroup(group){
+    try {
+      if(!group._handles || !group._objects || !group._objects[0]) return;
+      const poly = group._objects[0];
+      poly.setCoords();
+      for(let i=0;i<poly.points.length && i<group._handles.length;i++){
+        const pt = poly.points[i];
+        const h = group._handles[i];
+        h.left = group.left + pt.x;
+        h.top = group.top + pt.y;
+        h.setCoords();
+      }
+      canvas.requestRenderAll();
+    } catch(e){}
+  }
+
+  // hide all handles (called on selection cleared etc)
+  function hideAllHandles(){
+    const objs = canvas.getObjects();
+    objs.forEach(o => {
+      if(o._handles && Array.isArray(o._handles)){
+        o._handles.forEach(h => { try{ canvas.remove(h); }catch(e){} });
+        o._handles = [];
+      }
+    });
+  }
+
+  // add handles for all groups currently on canvas (useful after load)
+  function addHandlesForAllGroups(){
+    const groups = canvas.getObjects().filter(o=>o.type === 'group');
+    groups.forEach(g => {
+      addVertexHandlesToGroup(g);
+    });
+  }
+
+  // listen for group movement / modification to reposition handles
+  canvas.on('object:moving', function(ev){
+    const obj = ev.target;
+    if(!obj) return;
+    if(obj.type === 'group'){
+      updateHandlesForGroup(obj);
+    }
+    // if dragging a handle, we updated polygon in handle moving
+  });
+
+  canvas.on('object:modified', function(ev){
+    const obj = ev.target;
+    if(!obj) return;
+    // after group modified, recalc handles
+    if(obj.type === 'group') updateHandlesForGroup(obj);
+  });
+
+  // when object removed, cleanup its handles
+  canvas.on('object:removed', function(ev){
+    const obj = ev.target;
+    if(obj) removeHandlesForObject(obj);
+  });
+
+  // when selection changes, show handles for selected group only
+  canvas.on('selection:created', function(ev){
+    const obj = ev.target;
+    // hide handles for others
+    hideAllHandles();
+    if(obj && obj.type === 'group'){
+      // ensure handles exist
+      addVertexHandlesToGroup(obj);
+    } else {
+      // if selection is an image, nothing to show
+      // but ensure any group handles remain removed
+    }
+    populateModalList();
+  });
+  canvas.on('selection:updated', function(ev){
+    const obj = ev.target;
+    hideAllHandles();
+    if(obj && obj.type === 'group'){
+      addVertexHandlesToGroup(obj);
+    }
+    populateModalList();
+  });
+  canvas.on('selection:cleared', function(ev){
+    hideAllHandles();
+    populateModalList();
+  });
+
+  // ---------- finalize polygon creation (existing) ----------
   function finalizePolygonFromTemp(){
     if (tempPoints.length < 3){ log('Need at least 3 points'); return; }
     const pts = tempPoints.map(p=>({x:p.left,y:p.top}));
-    const poly = new fabric.Polygon(pts, { fill:'rgba(255,255,0,0.15)', stroke:'#FFD400', strokeWidth:2, selectable:true });
+    const poly = new fabric.Polygon(pts, { fill:'rgba(255,255,0,0.15)', stroke:'#FFD400', strokeWidth:2, selectable:true, objectCaching:false });
     const label = prompt('Enter annotation text for this polygon:', '');
     const txt = new fabric.Textbox(label || '', { fontSize: Math.max(12, Math.min(28, Math.round(poly.width * 0.08))), fill:'#FFD400', stroke:'#000', strokeWidth:1, textAlign:'center', originX:'center', originY:'center', editable:true, backgroundColor:'rgba(0,0,0,0)' });
-    txt.left = poly.width / 2; txt.top = poly.height / 2; txt.setCoords();
-    const group = new fabric.Group([poly, txt], { left: poly.left, top: poly.top, selectable:true, hasControls:true, lockScalingFlip:true });
+    // place the textbox centered relative to polygon bounding box
+    // We'll compute group coords after group creation
+    const group = new fabric.Group([poly, txt], { left: poly.left || 20, top: poly.top || 20, selectable:true, hasControls:true, lockScalingFlip:true, objectCaching:false });
     assignUID(group);
 
-    // scaling handler to resize label font instead of stretching group
+    // scaling handler: instead of uniform group scale, update inner textbox font size and reset group scale
     group.on('scaling', function(){
       try {
         const g = group;
         const pObj = g.item(0);
         const tObj = g.item(1);
-        const newFont = Math.max(10, Math.min(80, Math.round((tObj.fontSize || 14) * (g.scaleX || 1))));
+        // compute approximate new font size from width ratio
+        const scaleX = g.scaleX || 1;
+        const newFont = Math.max(10, Math.min(120, Math.round((tObj.fontSize || 14) * scaleX)));
         tObj.fontSize = newFont;
         tObj.setCoords();
+        // Reset scale to 1 to avoid distortion
         const left = g.left, top = g.top;
         g.scaleX = 1; g.scaleY = 1;
         g.left = left; g.top = top;
-        canvas.renderAll();
+        // update positions so handles correlate
+        canvas.requestRenderAll();
       } catch(e){}
     });
 
@@ -568,6 +768,17 @@
     });
 
     canvas.add(group);
+    // after adding, set textbox center
+    try {
+      const pObj = group.item(0);
+      const tObj = group.item(1);
+      tObj.left = pObj.width / 2;
+      tObj.top = pObj.height / 2;
+      tObj.setCoords();
+    } catch(e){}
+    // add vertex handles so user can reshape polygon immediately
+    addVertexHandlesToGroup(group);
+
     cleanupTempDrawing();
     setPolygonMode(false);
     pushState();
@@ -605,14 +816,14 @@
   window.addEventListener('keydown', (ev)=>{
     if (ev.key === 'Delete' || ev.key === 'Backspace'){
       const a = canvas.getActiveObject();
-      if (a){ canvas.remove(a); pushState(); populateModalList(); }
+      if (a){ removeHandlesForObject(a); canvas.remove(a); pushState(); populateModalList(); }
     }
     if ((ev.ctrlKey || ev.metaKey) && ev.key === 'z') undo();
     if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && (ev.key === 'Z' || ev.key === 'z')) redo();
   });
 
   // ---------- simple UI toggles ----------
-  showHideToolbarBtn.addEventListener('click', ()=>{
+  if(showHideToolbarBtn) showHideToolbarBtn.addEventListener('click', ()=>{
     if (toolbar.style.display === 'none'){ toolbar.style.display = 'flex'; showHideToolbarBtn.textContent = 'Hide UI'; }
     else { toolbar.style.display = 'none'; showHideToolbarBtn.textContent = 'Show UI'; }
   });
@@ -622,15 +833,17 @@
     populateModalList();
     const saved = localStorage.getItem('fieldar_overlays');
     if (saved) log('Local project state found (Load Project to restore).');
+    // add handles to groups if page had already loaded a JSON into canvas via other means
+    setTimeout(()=>addHandlesForAllGroups(), 300);
   }
   initialPopulate();
 
   // ---------- wire undo/redo buttons ----------
-  undoBtn.addEventListener('click', undo);
-  redoBtn.addEventListener('click', redo);
+  if(undoBtn) undoBtn.addEventListener('click', undo);
+  if(redoBtn) redoBtn.addEventListener('click', redo);
 
   // ---------- expose for console debugging ----------
   window.fieldar = { canvas, pushState, undo, redo, setPolygonMode, finalizePolygonFromTemp };
 
-  log('fieldar.js (modal build) ready');
+  log('fieldar.js (modal build, with vertex handles) ready');
 })();
