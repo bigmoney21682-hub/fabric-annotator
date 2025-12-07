@@ -1,5 +1,5 @@
 // FILE: fieldar.js
-// Fabric.js based FieldAR Annotator
+// Fabric.js based FieldAR Annotator with Polygon Text Annotations
 
 let canvas = new fabric.Canvas('annotatorCanvas');
 let undoStack = [];
@@ -88,19 +88,39 @@ function finishPolygon() {
         fill:'rgba(255,255,0,0.3)'
     });
 
-    canvas.add(polygon);
-    // Clean up temporary circles/lines
+    // Add editable text
+    let text = new fabric.Textbox('Tap to Edit', {
+        left: polygon.left + polygon.width/2,
+        top: polygon.top + polygon.height/2,
+        fontSize: 16,
+        fill: '#000',
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        editable: true,
+        originX: 'center',
+        originY: 'center'
+    });
+
+    let group = new fabric.Group([polygon, text], {
+        left: polygon.left,
+        top: polygon.top
+    });
+
+    canvas.add(group);
+    canvas.setActiveObject(group);
+
+    // Remove temporary points/lines
     pointArray.forEach(p => canvas.remove(p));
     lineArray.forEach(l => canvas.remove(l));
     pointArray = [];
     lineArray = [];
     polygonMode = false;
+
     saveState();
     canvas.renderAll();
-    log("Polygon created");
+    log("Polygon with text annotation created");
 }
 
-// Mouse click for polygon points
+// Polygon point placement
 canvas.on('mouse:down', function(options){
     if(!polygonMode) return;
 
@@ -172,4 +192,14 @@ document.getElementById("polygonBtn").addEventListener('click', startPolygonMode
 document.getElementById("finishPolygonBtn").addEventListener('click', finishPolygon);
 document.getElementById("importFile").addEventListener('change', function(e){
     importJSON(e.target.files[0]);
+});
+
+// --------------------
+// Enable click-to-edit text
+// --------------------
+canvas.on('mouse:dblclick', function(e){
+    if(e.target && e.target.type === 'textbox'){
+        e.target.enterEditing();
+        e.target.selectAll();
+    }
 });
