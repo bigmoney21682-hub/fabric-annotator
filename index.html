@@ -2,38 +2,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
 <title>FieldAR Annotator</title>
 
-<!-- Fabric.js CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.1.0/fabric.min.js"></script>
+<!-- Fabric.js CDN (must load before FieldAR scripts) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
 
-<!-- FieldAR Core + UI -->
-<script src="fieldar.js" defer></script>
+<!-- FieldAR core + UI -->
+<script src="./fieldar-core.js"></script>
+<script src="./fieldar-ui.js" defer></script>
 
 <style>
-body { margin:0; font-family: Arial; text-align:center; background:#222; color:#fff; }
-#toolbar { position: fixed; top:5px; left:5px; z-index:1000; display:flex; gap:5px; flex-wrap:wrap;}
-#toolbar button, #toolbar input { padding:6px 10px; font-size:14px; }
-#annotatorCanvas { border:1px solid #555; display:block; margin:50px auto 0; }
-#debugConsole { position:fixed; bottom:0; left:0; width:100%; max-height:150px; overflow-y:auto; background:#111; color:#0f0; font-family:monospace; font-size:12px; padding:4px; box-sizing:border-box;}
+  :root{--bg:#111;--panel:#1e1e1e;--accent:#2b7bff;--muted:#bbb}
+  html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Arial,Helvetica,sans-serif}
+  #toolbar{position:fixed;top:8px;left:8px;z-index:9999;display:flex;gap:8px;align-items:center;background:rgba(0,0,0,0.4);padding:8px;border-radius:8px}
+  #toolbar button,#toolbar input[type=file]{background:var(--panel);border:1px solid #333;color:#fff;padding:8px;border-radius:6px;cursor:pointer}
+  #toolbar button:active{transform:translateY(1px)}
+  canvas { display:block; margin: 56px auto 0; box-shadow:0 2px 12px rgba(0,0,0,0.6) }
+  #debugConsole{position:fixed;bottom:0;left:0;width:100%;max-height:180px;overflow:auto;background:#000;color:#0f0;font-family:monospace;font-size:12px;padding:8px;box-sizing:border-box;opacity:0.95}
+  /* mobile-friendly */
+  @media (orientation:portrait){
+    #toolbar{flex-wrap:wrap;left:6px;right:6px}
+  }
 </style>
 </head>
 <body>
 
-<div id="toolbar">
-    <button id="undoBtn">Undo</button>
-    <button id="redoBtn">Redo</button>
-    <button id="polyBtn">Polygon Draw</button>
-    <button id="deleteBtn">Delete Overlay</button>
-    <input type="file" id="imageLoader" accept="image/*">
-    <button id="exportBtn">Export JSON</button>
-    <input type="file" id="importFile" accept="application/json" style="display:none">
-</div>
+<!-- Optional hidden starter image (FieldAR will still work w/out it) -->
+<img id="starter-image" src="./icons/Blue_GCPA-removebg-preview.png" alt="" style="display:none">
 
+<!-- Canvas (FieldAR will initialize this) -->
 <canvas id="annotatorCanvas"></canvas>
-<div id="debugConsole"></div>
+
+<!-- Debug console appended by UI if missing -->
+<div id="debugConsole" aria-hidden="false"></div>
 
 </body>
 </html>

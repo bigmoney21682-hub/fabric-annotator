@@ -1,255 +1,304 @@
 // FILE: fieldar-core.js
-// Core Fabric.js canvas logic for FieldAR Annotator
+// FieldAR core: canvas initialization, polygon engine, undo/redo, image load, save/load
 
-var FieldAR = (function () {
-    const _state = {
-        canvas: null,
-        undoStack: [],
-        redoStack: [],
-        polygonMode: false,
-        pointArray: [],
-        lineArray: [],
-        activeLine: null,
-        activeShape: null
+(function(global){
+
+  const FieldAR = {};
+  const STATE = {
+    canvas: null,
+    undoStack: [],
+    redoStack: [],
+    polygonMode: false,
+    pointArray: [],
+    lineArray: [],
+    activeLine: null,
+    activeShape: null,
+    originalWidth: null,
+    originalHeight: null
+  };
+
+  // debug helper (UI injects console div; fallback to console)
+  function _dbg(msg, type='log'){
+    const el = document.getElementById('debugConsole');
+    if(el){
+      const prefix = type==='error' ? '[ERROR]' : '[LOG]';
+      el.innerHTML += `${prefix} ${msg}<br>`;
+      el.scrollTop = el.scrollHeight;
+    } else {
+      if(type==='error') console.error(msg); else console.log(msg);
+    }
+  }
+
+  // Save current canvas state for undo
+  function saveState(limit=50){
+    if(!STATE.canvas) return;
+    try{
+      STATE.undoStack.push(JSON.stringify(STATE.canvas.toJSON()));
+      if(STATE.undoStack.length>limit) STATE.undoStack.shift();
+      STATE.redoStack = [];
+      _dbg(`state saved (undoStack=${STATE.undoStack.length})`);
+    }catch(e){ _dbg('saveState error: '+e,'error'); }
+  }
+
+  function undo(){
+    if(!STATE.canvas) return;
+    if(STATE.undoStack.length<=1){
+      _dbg('nothing to undo');
+      return;
+    }
+    try{
+      STATE.redoStack.push(STATE.undoStack.pop());
+      const prev = STATE.undoStack[STATE.undoStack.length-1];
+      STATE.canvas.loadFromJSON(prev, STATE.canvas.renderAll.bind(STATE.canvas));
+      _dbg('undo applied');
+    }catch(e){ _dbg('undo error: '+e,'error'); }
+  }
+
+  function redo(){
+    if(!STATE.canvas) return;
+    if(STATE.redoStack.length===0){ _dbg('nothing to redo'); return; }
+    try{
+      const next = STATE.redoStack.pop();
+      STATE.undoStack.push(next);
+      STATE.canvas.loadFromJSON(next, STATE.canvas.renderAll.bind(STATE.canvas));
+      _dbg('redo applied');
+    }catch(e){ _dbg('redo error: '+e,'error'); }
+  }
+
+  // init canvas with a canvas element id (or created canvas exists already in DOM)
+  function init(canvasId, opts = {}){
+    if(typeof fabric === 'undefined'){
+      _dbg('fabric not found. Make sure fabric.min.js is loaded before fieldar-core.js','error');
+      return null;
+    }
+
+    const el = document.getElementById(canvasId);
+    if(!el){
+      _dbg(`canvas element "${canvasId}" not found in DOM`,'error');
+      return null;
+    }
+
+    // prefer provided size or fit to window
+    const w = opts.width || window.innerWidth - 16;
+    const h = opts.height || Math.max(window.innerHeight - 120, 300);
+
+    el.width = w;
+    el.height = h;
+
+    STATE.canvas = new fabric.Canvas(canvasId, { preserveObjectStacking: true, selection: true });
+    STATE.canvas.setWidth(w);
+    STATE.canvas.setHeight(h);
+
+    // wire save triggers
+    STATE.canvas.on('object:added', saveState);
+    STATE.canvas.on('object:modified', saveState);
+    STATE.canvas.on('object:removed', saveState);
+
+    // initial snapshot
+    saveState();
+
+    _dbg('canvas initialized: '+w+'x'+h);
+    return STATE.canvas;
+  }
+
+  // load image file (File object) as background, resizing canvas to image natural size
+  function loadImageFile(file){
+    if(!STATE.canvas) return;
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      fabric.Image.fromURL(ev.target.result, function(img){
+        STATE.originalWidth = img.width;
+        STATE.originalHeight = img.height;
+        STATE.canvas.setWidth(img.width);
+        STATE.canvas.setHeight(img.height);
+        STATE.canvas.setBackgroundImage(img, STATE.canvas.renderAll.bind(STATE.canvas), { originX:'left', originY:'top' });
+        saveState();
+        _dbg(`background image loaded ${img.width}x${img.height}`);
+      });
     };
+    reader.readAsDataURL(file);
+  }
 
-    const max = 999999;
-    const min = 99;
+  // toggle polygon mode
+  function togglePolygonMode(){
+    STATE.polygonMode = !STATE.polygonMode;
+    STATE.pointArray.forEach(p=>STATE.canvas.remove(p));
+    STATE.lineArray.forEach(l=>STATE.canvas.remove(l));
+    STATE.pointArray = [];
+    STATE.lineArray = [];
+    STATE.activeLine = null;
+    STATE.activeShape = null;
+    _dbg('polygon mode: '+(STATE.polygonMode?'ON':'OFF'));
+    return STATE.polygonMode;
+  }
 
-    // Debug logging
-    const debugConsole = document.getElementById("debugConsole");
-    function log(msg) {
-        console.log(msg);
-        if (debugConsole) {
-            debugConsole.innerHTML += `[LOG] ${msg}<br>`;
-            debugConsole.scrollTop = debugConsole.scrollHeight;
-        }
-    }
-    function error(msg) {
-        console.error(msg);
-        if (debugConsole) {
-            debugConsole.innerHTML += `[ERROR] ${msg}<br>`;
-            debugConsole.scrollTop = debugConsole.scrollHeight;
-        }
-    }
+  // add a polygon point - passed the mouse event (fabric mouse event)
+  function addPolygonPoint(fabEvent){
+    if(!STATE.canvas || !STATE.polygonMode) return;
+    const pointer = STATE.canvas.getPointer(fabEvent.e);
+    const cx = pointer.x, cy = pointer.y;
+    const circle = new fabric.Circle({
+      radius:5, left:cx, top:cy, fill: STATE.pointArray.length===0 ? 'red' : '#fff',
+      stroke:'#333', strokeWidth:0.6, originX:'center', originY:'center', selectable:false
+    });
 
-    function generateCid() {
-        return new Date().getTime() + Math.floor(Math.random() * (max - min + 1) + min);
-    }
+    const line = new fabric.Line([cx, cy, cx, cy], { stroke:'#ff0', strokeWidth:2, selectable:false, evented:false });
 
-    // Save state for undo
-    function saveState() {
-        if (!_state.canvas) return;
-        _state.undoStack.push(JSON.stringify(_state.canvas.toJSON()));
-        if (_state.undoStack.length > 50) _state.undoStack.shift();
-        _state.redoStack = [];
-        log("State saved. Undo stack size: " + _state.undoStack.length);
-    }
-
-    function undo() {
-        if (!_state.canvas || _state.undoStack.length === 0) return;
-        _state.redoStack.push(JSON.stringify(_state.canvas.toJSON()));
-        const prev = _state.undoStack.pop();
-        _state.canvas.loadFromJSON(prev, _state.canvas.renderAll.bind(_state.canvas));
-        log("Undo applied");
+    // if we have an active shape polygon being previewed, extend it
+    if(STATE.activeShape){
+      const pts = STATE.activeShape.get('points');
+      pts.push({ x: cx, y: cy });
+      STATE.activeShape.set({ points: pts });
+      STATE.canvas.renderAll();
+    } else {
+      const poly = new fabric.Polygon([{ x: cx, y: cy }], { stroke:'#333', fill:'rgba(200,200,200,0.12)', selectable:false, evented:false });
+      STATE.activeShape = poly;
+      STATE.canvas.add(poly);
     }
 
-    function redo() {
-        if (!_state.canvas || _state.redoStack.length === 0) return;
-        _state.undoStack.push(JSON.stringify(_state.canvas.toJSON()));
-        const next = _state.redoStack.pop();
-        _state.canvas.loadFromJSON(next, _state.canvas.renderAll.bind(_state.canvas));
-        log("Redo applied");
+    STATE.canvas.add(circle);
+    STATE.canvas.add(line);
+
+    STATE.pointArray.push(circle);
+    STATE.lineArray.push(line);
+  }
+
+  // finalize polygon (create real fabric.Polygon + editable text)
+  function finalizePolygon(){
+    if(!STATE.canvas || !STATE.polygonMode) return;
+    if(STATE.pointArray.length < 3){
+      _dbg('need at least 3 points to finalize polygon');
+      return;
     }
+    const points = STATE.pointArray.map(p => ({ x: p.left, y: p.top }));
+    STATE.pointArray.forEach(p => STATE.canvas.remove(p));
+    STATE.lineArray.forEach(l => STATE.canvas.remove(l));
+    if(STATE.activeShape) STATE.canvas.remove(STATE.activeShape);
 
-    function initCanvas(canvasId) {
-        const canvasEl = document.getElementById(canvasId);
-        if (!canvasEl) {
-            error("Canvas element not found: " + canvasId);
-            return;
-        }
+    // polygon
+    const polygon = new fabric.Polygon(points, { stroke:'#2b7bff', strokeWidth:2, fill:'rgba(43,123,255,0.15)', selectable:true });
 
-        _state.canvas = new fabric.Canvas(canvasId, {
-            width: window.innerWidth,
-            height: window.innerHeight,
-            preserveObjectStacking: true
-        });
+    // annotation text (centered)
+    const center = polygon.getCenterPoint ? polygon.getCenterPoint() : { x: polygon.left + polygon.width/2, y: polygon.top + polygon.height/2 };
+    const text = new fabric.Textbox('Label', { left:center.x, top:center.y, originX:'center', originY:'center', fontSize:14, fill:'#fff', editable:true });
 
-        log("Canvas initialized");
+    const group = new fabric.Group([polygon, text], { left: polygon.left, top: polygon.top, selectable:true });
+    STATE.canvas.add(group);
+    STATE.canvas.setActiveObject(group);
 
-        // Auto save
-        _state.canvas.on('object:added', saveState);
-        _state.canvas.on('object:modified', saveState);
-        _state.canvas.on('object:removed', saveState);
-    }
+    // reset polygon state
+    STATE.pointArray = [];
+    STATE.lineArray = [];
+    STATE.activeShape = null;
+    STATE.activeLine = null;
+    STATE.polygonMode = false;
 
-    // Load image into canvas
-    function loadImage(file) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            fabric.Image.fromURL(e.target.result, function (img) {
-                _state.canvas.setWidth(img.width);
-                _state.canvas.setHeight(img.height);
-                _state.canvas.setBackgroundImage(img, _state.canvas.renderAll.bind(_state.canvas), {
-                    originX: 'left',
-                    originY: 'top'
-                });
-                saveState();
-                log(`Loaded image: ${img.width}x${img.height}`);
-            });
-        };
-        reader.readAsDataURL(file);
-    }
+    saveState();
+    _dbg('polygon finalized (points='+points.length+')');
+    return group;
+  }
 
-    // Polygon drawing
-    function togglePolygonMode() {
-        _state.polygonMode = !_state.polygonMode;
-        _state.pointArray = [];
-        _state.lineArray = [];
-        _state.activeLine = null;
-        _state.activeShape = null;
-        log("Polygon mode: " + (_state.polygonMode ? "ON" : "OFF"));
-    }
+  function deleteSelected(){
+    if(!STATE.canvas) return;
+    const obj = STATE.canvas.getActiveObject();
+    if(obj){
+      STATE.canvas.remove(obj);
+      saveState();
+      _dbg('deleted selected object');
+    } else _dbg('no active object to delete');
+  }
 
-    function addPoint(options) {
-        const id = generateCid();
-        const circle = new fabric.Circle({
-            radius: 5,
-            fill: _state.pointArray.length === 0 ? 'red' : '#fff',
-            stroke: '#333',
-            strokeWidth: 0.5,
-            left: options.e.layerX,
-            top: options.e.layerY,
-            selectable: false,
-            originX: 'center',
-            originY: 'center',
-            id: id
-        });
+  // export JSON
+  function exportJSON(){
+    if(!STATE.canvas) return null;
+    const json = JSON.stringify(STATE.canvas.toJSON());
+    return json;
+  }
 
-        const points = [options.e.layerX, options.e.layerY, options.e.layerX, options.e.layerY];
-        const line = new fabric.Line(points, {
-            strokeWidth: 2,
-            fill: '#999',
-            stroke: '#999',
-            originX: 'center',
-            originY: 'center',
-            selectable: false,
-            evented: false
-        });
+  // convenience to download exported json
+  function exportJSONDownload(filename='fieldar-overlays.json'){
+    const json = exportJSON();
+    if(!json) return;
+    const blob = new Blob([json], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    _dbg('exported JSON');
+  }
 
-        if (_state.activeShape) {
-            const pos = _state.canvas.getPointer(options.e);
-            const pts = _state.activeShape.get("points");
-            pts.push({ x: pos.x, y: pos.y });
-            _state.activeShape.set({ points: pts });
-            _state.canvas.remove(_state.activeShape);
-            _state.canvas.add(_state.activeShape);
-            _state.activeShape = _state.activeShape;
-            _state.canvas.renderAll();
-        } else {
-            const polygon = new fabric.Polygon([{ x: options.e.layerX, y: options.e.layerY }], {
-                stroke: '#333',
-                strokeWidth: 1,
-                fill: 'rgba(200,200,200,0.1)',
-                selectable: false
-            });
-            _state.activeShape = polygon;
-            _state.canvas.add(polygon);
-        }
-
-        _state.activeLine = line;
-        _state.pointArray.push(circle);
-        _state.lineArray.push(line);
-
-        _state.canvas.add(circle);
-        _state.canvas.add(line);
-        _state.canvas.selection = false;
-    }
-
-    function finalizePolygon() {
-        if (!_state.polygonMode || _state.pointArray.length === 0) return;
-        const points = _state.pointArray.map(p => ({ x: p.left, y: p.top }));
-        _state.pointArray.forEach(p => _state.canvas.remove(p));
-        _state.lineArray.forEach(l => _state.canvas.remove(l));
-        if (_state.activeShape) _state.canvas.remove(_state.activeShape);
-
-        const polygon = new fabric.Polygon(points, {
-            stroke: '#333',
-            strokeWidth: 0.5,
-            fill: 'rgba(0,0,0,0)',
-            selectable: true
-        });
-
-        const text = new fabric.Text('Tap to edit', {
-            fontFamily: 'Arial',
-            fill: 'white',
-            fontSize: 12,
-            left: polygon.left + (polygon.width / 2),
-            top: polygon.top + (polygon.height / 2),
-            visible: false
-        });
-
-        const group = new fabric.Group([polygon, text], {
-            left: polygon.left,
-            top: polygon.top
-        });
-
-        _state.canvas.add(group);
-        _state.canvas.selection = true;
-        _state.activeShape = null;
-        _state.activeLine = null;
-        _state.pointArray = [];
-        _state.lineArray = [];
-        _state.polygonMode = false;
-        log("Polygon created with " + points.length + " points");
-    }
-
-    function deleteSelected() {
-        if (!_state.canvas) return;
-        const obj = _state.canvas.getActiveObject();
-        if (obj) {
-            _state.canvas.remove(obj);
-            log("Deleted selected object");
-        }
-    }
-
-    function exportJSON() {
-        if (!_state.canvas) return;
-        const json = JSON.stringify(_state.canvas.toJSON());
-        const blob = new Blob([json], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "fieldar-overlays.json";
-        a.click();
-        URL.revokeObjectURL(url);
-        log("Export complete, JSON size: " + json.length);
-    }
-
-    function importJSON(file) {
-        const reader = new FileReader();
-        reader.onload = function (ev) {
-            try {
-                const data = JSON.parse(ev.target.result);
-                _state.canvas.loadFromJSON(data, _state.canvas.renderAll.bind(_state.canvas));
-                log("Imported JSON with " + _state.canvas.getObjects().length + " objects");
-            } catch (e) {
-                error("Failed to parse JSON");
-            }
-        };
-        reader.readAsText(file);
-    }
-
-    return {
-        initCanvas,
-        loadImage,
-        togglePolygonMode,
-        addPoint,
-        finalizePolygon,
-        undo,
-        redo,
-        deleteSelected,
-        exportJSON,
-        importJSON
+  // import JSON from File object
+  function importJSONFile(file){
+    if(!STATE.canvas) return;
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      try{
+        const jsonObj = JSON.parse(ev.target.result);
+        STATE.canvas.loadFromJSON(jsonObj, STATE.canvas.renderAll.bind(STATE.canvas));
+        saveState();
+        _dbg('imported JSON');
+      }catch(e){ _dbg('import JSON failed: '+e,'error'); }
     };
-})();
+    reader.readAsText(file);
+  }
+
+  // load JSON string directly
+  function importJSON(jsonStr){
+    if(!STATE.canvas) return;
+    try{
+      const obj = JSON.parse(jsonStr);
+      STATE.canvas.loadFromJSON(obj, STATE.canvas.renderAll.bind(STATE.canvas));
+      saveState();
+      _dbg('imported JSON string');
+    }catch(e){ _dbg('import JSON parse failed: '+e,'error'); }
+  }
+
+  // scale canvas and objects to fit container (preserve ratios). optional: call on resize/window change
+  function fitToContainer(maxWidth = window.innerWidth - 16, maxHeight = window.innerHeight - 120){
+    if(!STATE.canvas) return;
+    const origW = STATE.originalWidth || STATE.canvas.getWidth();
+    const origH = STATE.originalHeight || STATE.canvas.getHeight();
+    if(!origW || !origH) return;
+    const sx = maxWidth / origW;
+    const sy = maxHeight / origH;
+    const s = Math.min(sx, sy, 1); // don't upscale by default
+    STATE.canvas.setWidth(origW * s); STATE.canvas.setHeight(origH * s);
+    const bg = STATE.canvas.backgroundImage;
+    if(bg){
+      bg.scale(s);
+      STATE.canvas.setBackgroundImage(bg, STATE.canvas.renderAll.bind(STATE.canvas));
+    }
+    // scale objects proportionally (store original coords if needed)
+    STATE.canvas.getObjects().forEach(obj => {
+      if(!obj._orig){ obj._orig = { left: obj.left, top: obj.top, scaleX: obj.scaleX || 1, scaleY: obj.scaleY || 1 }; }
+      obj.left = obj._orig.left * s;
+      obj.top = obj._orig.top * s;
+      obj.scaleX = (obj._orig.scaleX || 1) * s;
+      obj.scaleY = (obj._orig.scaleY || 1) * s;
+      obj.setCoords();
+    });
+    STATE.canvas.renderAll();
+    _dbg('fitToContainer: scale '+s);
+  }
+
+  // expose API
+  FieldAR.init = init;
+  FieldAR.loadImageFile = loadImageFile;
+  FieldAR.togglePolygonMode = togglePolygonMode;
+  FieldAR.addPolygonPoint = addPolygonPoint;
+  FieldAR.finalizePolygon = finalizePolygon;
+  FieldAR.deleteSelected = deleteSelected;
+  FieldAR.undo = undo;
+  FieldAR.redo = redo;
+  FieldAR.exportJSON = exportJSON;
+  FieldAR.exportJSONDownload = exportJSONDownload;
+  FieldAR.importJSONFile = importJSONFile;
+  FieldAR.importJSON = importJSON;
+  FieldAR.getCanvas = () => STATE.canvas;
+  FieldAR.fitToContainer = fitToContainer;
+  FieldAR._STATE = STATE; // for debug / advanced usage
+
+  // attach to global
+  global.FieldAR = FieldAR;
+
+})(window);

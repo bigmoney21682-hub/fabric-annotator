@@ -1,162 +1,121 @@
 // FILE: fieldar-ui.js
-// Handles UI, toolbar, file inputs, debug console, and wiring with fieldar-core.js
+// UI wiring for FieldAR (toolbar, debug console, file inputs)
 
-// ----- Debug Console -----
-const debugConsole = document.createElement("div");
-debugConsole.id = "debugConsole";
-debugConsole.style.position = "fixed";
-debugConsole.style.bottom = "0";
-debugConsole.style.left = "0";
-debugConsole.style.width = "100%";
-debugConsole.style.maxHeight = "150px";
-debugConsole.style.overflowY = "auto";
-debugConsole.style.background = "#222";
-debugConsole.style.color = "#0f0";
-debugConsole.style.fontFamily = "monospace";
-debugConsole.style.fontSize = "12px";
-debugConsole.style.padding = "5px";
-document.body.appendChild(debugConsole);
+// Wait for DOM
+document.addEventListener('DOMContentLoaded', () => {
 
-function log(msg){
-    console.log(msg);
-    debugConsole.innerHTML += `[LOG] ${msg}<br>`;
-    debugConsole.scrollTop = debugConsole.scrollHeight;
-}
-function error(msg){
-    console.error(msg);
-    debugConsole.innerHTML += `[ERROR] ${msg}<br>`;
-    debugConsole.scrollTop = debugConsole.scrollHeight;
-}
+  // ensure debug console exists
+  let debugConsole = document.getElementById('debugConsole');
+  if(!debugConsole){
+    debugConsole = document.createElement('div');
+    debugConsole.id = 'debugConsole';
+    document.body.appendChild(debugConsole);
+  }
+  function log(msg){ console.log(msg); debugConsole.innerHTML += `[LOG] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight; }
+  function error(msg){ console.error(msg); debugConsole.innerHTML += `[ERROR] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight; }
+  log('UI: DOM ready');
 
-log("🖥 Debug console initialized");
+  // create toolbar container if not present
+  let toolbar = document.getElementById('toolbar');
+  if(!toolbar){
+    toolbar = document.createElement('div');
+    toolbar.id = 'toolbar';
+    document.body.appendChild(toolbar);
+  }
 
-// ----- Toolbar -----
-const toolbar = document.createElement("div");
-toolbar.id = "toolbar";
-toolbar.style.position = "fixed";
-toolbar.style.top = "10px";
-toolbar.style.left = "10px";
-toolbar.style.zIndex = "10000";
-toolbar.style.display = "flex";
-toolbar.style.gap = "8px";
-document.body.appendChild(toolbar);
+  // helper to create UI elements (buttons/input)
+  function btn(text, id){
+    const b = document.createElement('button');
+    b.id = id || ('btn-' + text.replace(/\s+/g,'').toLowerCase());
+    b.innerText = text;
+    toolbar.appendChild(b);
+    return b;
+  }
 
-// Buttons
-const undoBtn = document.createElement("button");
-undoBtn.innerText = "Undo";
-const redoBtn = document.createElement("button");
-redoBtn.innerText = "Redo";
-const deleteBtn = document.createElement("button");
-deleteBtn.innerText = "Delete";
-const polygonBtn = document.createElement("button");
-polygonBtn.innerText = "Polygon Draw";
-const imageLoader = document.createElement("input");
-imageLoader.type = "file";
-imageLoader.accept = "image/*";
+  function fileInput(id){
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = id;
+    toolbar.appendChild(inp);
+    return inp;
+  }
 
-toolbar.appendChild(undoBtn);
-toolbar.appendChild(redoBtn);
-toolbar.appendChild(deleteBtn);
-toolbar.appendChild(polygonBtn);
-toolbar.appendChild(imageLoader);
+  // Buttons (Undo, Redo, Polygon toggle, Delete, Export, Import)
+  const undoBtn = btn('Undo','undoBtn');
+  const redoBtn = btn('Redo','redoBtn');
+  const polyBtn = btn('Polygon Mode','polyBtn');
+  const finalizeBtn = btn('Finalize Polygon','finalizePolygonBtn');
+  const deleteBtn = btn('Delete','deleteBtn');
+  const exportBtn = btn('Export JSON','exportBtn');
+  const importBtn = btn('Import JSON','importBtn');
+  const imageInput = fileInput('imageInput'); imageInput.accept = 'image/*';
+  const importFileInput = fileInput('importFileInput'); importFileInput.accept = 'application/json';
 
-// ----- Canvas reference -----
-const canvas = window.fieldARCanvas;
-if(!canvas){
-    error("Canvas not found. Ensure fieldar-core.js loaded first and canvas is initialized.");
-}
+  // small UI hint
+  const hint = document.createElement('span'); hint.style.color='#9aa'; hint.style.marginLeft='6px';
+  hint.innerText = 'Tip: double-click to complete polygon or click "Finalize Polygon"';
+  toolbar.appendChild(hint);
 
-// ----- Button Events -----
-undoBtn.onclick = function(){
-    if(window.undoStack && window.undoStack.length > 0){
-        const last = window.undoStack.pop();
-        window.redoStack.push(JSON.stringify(canvas.toJSON()));
-        canvas.loadFromJSON(last, canvas.renderAll.bind(canvas));
-        log("Undo performed");
-    } else { log("Undo stack empty"); }
-};
+  // initialize FieldAR canvas (use the canvas id from index.html)
+  const canvasElId = 'annotatorCanvas';
+  const canvas = FieldAR.init(canvasElId, { width: window.innerWidth-16, height: Math.max(window.innerHeight-120, 400) });
+  if(!canvas){
+    error('FieldAR canvas failed to initialize. Ensure fieldar-core.js is loaded and fabric.js is available.');
+    return;
+  }
 
-redoBtn.onclick = function(){
-    if(window.redoStack && window.redoStack.length > 0){
-        const last = window.redoStack.pop();
-        window.undoStack.push(JSON.stringify(canvas.toJSON()));
-        canvas.loadFromJSON(last, canvas.renderAll.bind(canvas));
-        log("Redo performed");
-    } else { log("Redo stack empty"); }
-};
+  // wire canvas mouse events for polygon
+  canvas.on('mouse:down', function(opt){
+    if(FieldAR._STATE && FieldAR._STATE.polygonMode){
+      FieldAR.addPolygonPoint(opt);
+    }
+  });
 
-deleteBtn.onclick = function(){
-    const active = canvas.getActiveObject();
-    if(active){
-        canvas.remove(active);
-        saveState();
-        log("Deleted selected object");
-    } else { log("No object selected to delete"); }
-};
+  canvas.on('mouse:dblclick', function(){
+    if(FieldAR._STATE && FieldAR._STATE.polygonMode){
+      FieldAR.finalizePolygon();
+    }
+  });
 
-polygonBtn.onclick = function(){
-    if(window.polygonMode === undefined) window.polygonMode = false;
-    window.polygonMode = !window.polygonMode;
-    log("Polygon mode: " + (window.polygonMode ? "ON" : "OFF"));
-};
+  // Button events
+  undoBtn.onclick = () => FieldAR.undo();
+  redoBtn.onclick = () => FieldAR.redo();
 
-// ----- Image Loader -----
-imageLoader.onchange = function(e){
-    const file = e.target.files[0];
-    if(!file){ error("No file selected"); return; }
-    const reader = new FileReader();
-    reader.onload = function(event){
-        fabric.Image.fromURL(event.target.result, function(img){
-            // Resize canvas
-            canvas.setWidth(img.width);
-            canvas.setHeight(img.height);
+  polyBtn.onclick = () => {
+    const on = FieldAR.togglePolygonMode();
+    polyBtn.style.background = on? '#2b7bff' : '';
+  };
 
-            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
-                originX: 'left',
-                originY: 'top'
-            });
-            saveState();
-            log(`Loaded image: ${img.width}x${img.height}`);
-        });
-    };
-    reader.readAsDataURL(file);
-};
+  finalizeBtn.onclick = () => FieldAR.finalizePolygon();
 
-// ----- Undo/Redo State -----
-window.undoStack = [];
-window.redoStack = [];
-function saveState(){
-    if(!window.undoStack) window.undoStack = [];
-    window.undoStack.push(JSON.stringify(canvas.toJSON()));
-    window.redoStack = [];
-}
-canvas.on('object:added', saveState);
-canvas.on('object:modified', saveState);
-canvas.on('object:removed', saveState);
+  deleteBtn.onclick = () => FieldAR.deleteSelected();
 
-// ----- Import/Export JSON -----
-function exportJSON(){
-    const json = JSON.stringify(canvas.toJSON());
-    const blob = new Blob([json], {type:"application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "fieldar-overlays.json";
-    a.click();
-    URL.revokeObjectURL(url);
-    log("Exported overlays JSON");
-}
-function importJSON(file){
-    const reader = new FileReader();
-    reader.onload = function(e){
-        try{
-            const data = JSON.parse(e.target.result);
-            canvas.loadFromJSON(data, canvas.renderAll.bind(canvas));
-            log("Imported overlays JSON");
-            saveState();
-        } catch(err){ error("Failed to parse JSON"); }
-    };
-    reader.readAsText(file);
-}
+  exportBtn.onclick = () => FieldAR.exportJSONDownload();
 
-log("UI script initialized");
+  importFileInput.onchange = function(e){
+    const f = e.target.files[0];
+    if(f) FieldAR.importJSONFile(f);
+  };
+
+  // Image loader
+  imageInput.onchange = function(e){
+    const f = e.target.files[0];
+    if(!f) return;
+    FieldAR.loadImageFile(f);
+  };
+
+  // keyboard shortcuts: Enter = finalize polygon, Delete = delete, Ctrl+Z/Ctrl+Y
+  document.addEventListener('keydown', (ev) => {
+    if(ev.key === 'Enter') FieldAR.finalizePolygon();
+    if(ev.key === 'Delete') FieldAR.deleteSelected();
+    if((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z'){ FieldAR.undo(); ev.preventDefault(); }
+    if((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y'){ FieldAR.redo(); ev.preventDefault(); }
+  });
+
+  // responsive: fit to container when window resizes (if background image present)
+  window.addEventListener('resize', () => {
+    FieldAR.fitToContainer(window.innerWidth - 16, window.innerHeight - 160);
+  });
+
+  log('UI wired to FieldAR, ready.');
+});
