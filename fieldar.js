@@ -1,493 +1,601 @@
 // FILE: fieldar.js
-// FieldAR Annotator -- Polygon + Prompted Text (centered, yellow text with black outline)
-// Option B implementation (prompt for label after polygon completion)
+// FieldAR -- full-featured annotator
+// Features: base image load, overlays (add/select/delete), overlay list, save/load project,
+// convert base → PNG, remove-bg stub, polygon drawing with prompted labels,
+// undo/redo, show/hide UI, side panel responsive, debug console.
+// Requires fabric.min.js (loaded before this file)
 
 (function(){
-  // Ensure fabric exists
-  if (typeof fabric === 'undefined') {
-    console.error("Fabric.js required. Include fabric.min.js before fieldar.js");
-    return;
-  }
-
-  // ---------- Debug console helpers ----------
+  // ---------- helpers & DOM ----------
   const dbg = document.getElementById('debugConsole');
-  function dbgLog(msg){
-    console.log(msg);
-    if (dbg){
-      dbg.innerHTML += `[LOG] ${msg}<br>`;
-      dbg.scrollTop = dbg.scrollHeight;
-    }
-  }
-  function dbgErr(msg){
-    console.error(msg);
-    if (dbg){
-      dbg.innerHTML += `[ERROR] ${msg}<br>`;
-      dbg.scrollTop = dbg.scrollHeight;
-    }
-  }
-  dbgLog('🖥 Debug console initialized');
+  function log(v){ console.log(v); if(dbg){ dbg.innerHTML += `[LOG] ${v}<br>`; dbg.scrollTop = dbg.scrollHeight; } }
+  function err(v){ console.error(v); if(dbg){ dbg.innerHTML += `[ERR] ${v}<br>`; dbg.scrollTop = dbg.scrollHeight; } }
 
-  // ---------- Canvas init & sizing ----------
+  // DOM elements
   const canvasEl = document.getElementById('annotatorCanvas');
-  function computeCanvasHeight(){
-    const dbgH = dbg ? dbg.offsetHeight : 0;
-    // keep some bottom room for debug console; if it's visible height is used by CSS
-    return Math.max(200, window.innerHeight - (dbg ? dbg.offsetHeight : 200));
-  }
-  canvasEl.width = window.innerWidth;
-  canvasEl.height = computeCanvasHeight();
+  const baseInput = document.getElementById('baseImageInput');
+  const addOverlayInput = document.getElementById('addOverlayInput');
+  const overlayListEl = document.getElementById('overlayList');
+  const sidePanel = document.getElementById('sidePanel');
+  const toggleSideBtn = document.getElementById('toggleSideBtn');
+  const showHideToolbarBtn = document.getElementById('showHideToolbarBtn');
+  const toolbar = document.getElementById('toolbar');
+  const deleteBtn = document.getElementById('deleteBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const loadBtn = document.getElementById('loadBtn');
+  const loadProjectFile = document.getElementById('loadProjectFile');
+  const convertPngBtn = document.getElementById('convertPngBtn');
+  const removeBgBtn = document.getElementById('removeBgBtn');
+  const clearSideBtn = document.getElementById('sideClearBtn');
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
 
-  const canvas = new fabric.Canvas('annotatorCanvas', {
-    backgroundColor: '#333',
-    selection: true,
-    preserveObjectStacking: true
-  });
+  const polygonBtn = document.getElementById('polygonBtn');
+  const completePolygonBtn = document.getElementById('completePolygonBtn');
+
+  // ---------- canvas init ----------
+  const canvas = new fabric.Canvas('annotatorCanvas', { backgroundColor:'#222', preserveObjectStacking:true });
   window._canvas = canvas;
-  dbgLog(`Canvas initialized ${canvas.getWidth()}x${canvas.getHeight()}`);
+  log('Canvas created');
 
-  // Keep responsive when window resizes (don't scale content - just adjust viewport)
-  window.addEventListener('resize', () => {
-    const h = computeCanvasHeight();
-    canvas.setHeight(h);
-    canvas.setWidth(window.innerWidth);
+  // Keep canvas element filling available area (we size to background or viewport)
+  function fitCanvasToViewport(width, height){
+    canvas.setWidth(width);
+    canvas.setHeight(height);
+    canvas.calcOffset();
     canvas.renderAll();
-    dbgLog('Window resized -- canvas viewport updated');
-  });
+  }
 
-  // ---------- State (undo/redo) ----------
+  // start with full viewport area (main area minus side panel width if visible)
+  function computeAvailableSize(){
+    const appWidth = document.documentElement.clientWidth;
+    const appHeight = document.documentElement.clientHeight - (toolbar ? toolbar.offsetHeight : 44) - (dbg ? dbg.offsetHeight : 140);
+    return { w: Math.max(320, appWidth - (sidePanel && !sidePanel.classList.contains('hidden') ? sidePanel.offsetWidth : 0)), h: Math.max(240, appHeight) };
+  }
+  function fitToViewport(){
+    const size = computeAvailableSize();
+    fitCanvasToViewport(size.w, size.h);
+  }
+  window.addEventListener('resize', fitToViewport);
+  fitToViewport();
+
+  // ---------- state & stacks ----------
   let undoStack = [];
   let redoStack = [];
   let isRestoring = false;
-  const MAX_STACK = 60;
+  const MAX_STACK = 80;
 
   function pushState(){
     if (isRestoring) return;
     try {
-      const state = JSON.stringify(canvas.toJSON());
-      undoStack.push(state);
+      const j = canvas.toJSON(['uid','overlayName']); // include custom props
+      const stateStr = JSON.stringify(j);
+      undoStack.push(stateStr);
       if (undoStack.length > MAX_STACK) undoStack.shift();
-      // clearing redo stack on new action
-      redoStack.length = 0;
-      dbgLog(`State pushed (undoStack=${undoStack.length})`);
-      localStorage.setItem('fieldar_overlays', state); // autosave last state
-    } catch (e) {
-      dbgErr('Failed saving state: ' + e);
+      redoStack = [];
+      localStorage.setItem('fieldar_overlays', stateStr);
+      log('State pushed (undoStack=' + undoStack.length + ')');
+    } catch(e){
+      err('pushState error: ' + e);
     }
   }
 
   function undo(){
-    if (undoStack.length <= 1) {
-      dbgLog('Nothing to undo');
-      return;
-    }
+    if (undoStack.length <= 1) { log('Nothing to undo'); return; }
     try {
-      const current = undoStack.pop(); // remove current
-      redoStack.push(current);
+      const cur = undoStack.pop();
+      redoStack.push(cur);
       const prev = undoStack[undoStack.length - 1];
       isRestoring = true;
-      canvas.loadFromJSON(prev, () => {
-        canvas.renderAll();
-        isRestoring = false;
-        dbgLog('Undo performed');
-      });
-    } catch (e) {
-      dbgErr('Undo error: ' + e);
-      isRestoring = false;
-    }
+      canvas.loadFromJSON(JSON.parse(prev), ()=>{ canvas.renderAll(); isRestoring=false; log('Undo'); rebuildOverlayList(); });
+    } catch(e){ err('Undo error: ' + e); isRestoring=false; }
   }
 
   function redo(){
-    if (redoStack.length === 0) {
-      dbgLog('Nothing to redo');
-      return;
-    }
+    if (!redoStack.length) { log('Nothing to redo'); return; }
     try {
       const next = redoStack.pop();
       undoStack.push(next);
       isRestoring = true;
-      canvas.loadFromJSON(next, () => {
-        canvas.renderAll();
-        isRestoring = false;
-        dbgLog('Redo performed');
-      });
-    } catch (e) {
-      dbgErr('Redo error: ' + e);
-      isRestoring = false;
-    }
+      canvas.loadFromJSON(JSON.parse(next), ()=>{ canvas.renderAll(); isRestoring=false; log('Redo'); rebuildOverlayList(); });
+    } catch(e){ err('Redo error: ' + e); isRestoring=false;}
   }
 
-  // Hook undo/redo buttons if present
-  document.getElementById('undoBtn')?.addEventListener('click', undo);
-  document.getElementById('redoBtn')?.addEventListener('click', redo);
+  // initial seed
+  pushState();
 
-  // ---------- Load state from localStorage (if exists) ----------
-  const saved = localStorage.getItem('fieldar_overlays');
-  if (saved) {
-    try {
-      isRestoring = true;
-      canvas.loadFromJSON(JSON.parse(saved), () => {
-        canvas.renderAll();
-        isRestoring = false;
-        // seed undoStack with saved state
-        undoStack.push(saved);
-        dbgLog('Restored saved overlays from localStorage');
-      });
-    } catch (e) {
-      isRestoring = false;
-      dbgErr('Failed restoring overlays: ' + e);
-    }
-  } else {
-    // seed initial state
-    pushState();
+  canvas.on('object:added', ()=>{ if(!isRestoring) pushState(); rebuildOverlayList(); });
+  canvas.on('object:modified', ()=>{ if(!isRestoring) pushState(); });
+  canvas.on('object:removed', ()=>{ if(!isRestoring) pushState(); rebuildOverlayList(); });
+
+  // ---------- utility: assign UID to object ----------
+  function assignUID(o){
+    if (!o.uid) o.uid = 'o' + Date.now().toString(36) + Math.floor(Math.random()*9999).toString(36);
+    return o.uid;
   }
 
-  // Ensure pushes on add/modify/remove
-  canvas.on('object:added', (e) => { if (!isRestoring) pushState(); });
-  canvas.on('object:modified', (e) => { if (!isRestoring) pushState(); });
-  canvas.on('object:removed', (e) => { if (!isRestoring) pushState(); });
+  // ---------- overlay list management ----------
+  function rebuildOverlayList(){
+    overlayListEl.innerHTML = '';
+    const objs = canvas.getObjects().filter(o => o.type === 'image' && o !== canvas.backgroundImage);
+    objs.forEach(o=>{
+      const id = assignUID(o);
+      const item = document.createElement('div');
+      item.className = 'overlayItem' + (canvas.getActiveObject() === o ? ' selected' : '');
+      item.dataset.uid = id;
 
-  // ---------- Image loader (fits to viewport while preserving aspect) ----------
-  const imageLoader = document.getElementById('imageLoader');
-  if (imageLoader){
-    imageLoader.addEventListener('change', (ev) => {
-      const f = ev.target.files && ev.target.files[0];
-      if (!f) return dbgLog('No image file selected');
-      const reader = new FileReader();
-      reader.onload = function(loadEv){
-        fabric.Image.fromURL(loadEv.target.result, function(img){
-          // compute scale to fit viewport
-          const maxW = window.innerWidth;
-          const maxH = computeCanvasHeight();
-          const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-          img.set({ originX: 'left', originY: 'top', selectable: false });
-          img.scale(scale);
+      const thumb = document.createElement('img');
+      thumb.className = 'overlayThumb';
+      // try to use object.src if available; fallback to toDataURL of the element
+      try{
+        if (o.getSrc) thumb.src = o.getSrc();
+        else if (o._element && o._element.src) thumb.src = o._element.src;
+      }catch(e){}
+      const meta = document.createElement('div');
+      meta.className = 'overlayMeta';
+      meta.textContent = o.overlayName || (o.uid || id);
 
-          // set canvas size to match scaled image
-          canvas.setWidth(Math.round(img.width * scale));
-          canvas.setHeight(Math.round(img.height * scale));
-          canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
-          pushState();
-          dbgLog(`Loaded image ${img.width}x${img.height} scaled to ${Math.round(img.width*scale)}x${Math.round(img.height*scale)}`);
-          // clear file input to avoid browser thumbnail preview on some devices
-          try { imageLoader.value = ''; } catch(e){}
-        }, { crossOrigin: 'anonymous' });
+      const controls = document.createElement('div');
+      controls.className = 'overlayControls';
+
+      const selectBtn = document.createElement('button');
+      selectBtn.className = 'btn small';
+      selectBtn.textContent = 'Select';
+      selectBtn.onclick = ()=>{
+        canvas.setActiveObject(o);
+        canvas.requestRenderAll();
+        rebuildOverlayList();
       };
-      reader.readAsDataURL(f);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn small';
+      delBtn.textContent = 'Delete';
+      delBtn.onclick = ()=>{
+        canvas.remove(o);
+        pushState();
+        rebuildOverlayList();
+      };
+
+      controls.appendChild(selectBtn);
+      controls.appendChild(delBtn);
+
+      item.appendChild(thumb);
+      item.appendChild(meta);
+      item.appendChild(controls);
+      overlayListEl.appendChild(item);
     });
-  } else {
-    dbgLog('No imageLoader input found (skip image load UI)');
   }
 
-  // ---------- Polygon drawing (live preview) ----------
+  // ---------- base image handling ----------
+  let lastBaseImageDataUrl = null; // keeps original data url when user loads base image
+
+  baseInput.addEventListener('change', (ev)=>{
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) { log('No base image selected'); return; }
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      lastBaseImageDataUrl = e.target.result; // save the original data url (jpeg etc)
+      fabric.Image.fromURL(e.target.result, function(img){
+        // fit to viewport area
+        const avail = computeAvailableSize();
+        const maxW = avail.w;
+        const maxH = avail.h;
+        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+        img.set({ originX:'left', originY:'top', selectable:false });
+        img.scale(scale);
+        canvas.setWidth(Math.round(img.width * scale));
+        canvas.setHeight(Math.round(img.height * scale));
+        canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+        canvas.renderAll();
+        pushState();
+        rebuildOverlayList();
+        log('Base image loaded and scaled');
+      }, { crossOrigin:'anonymous' });
+    };
+    reader.readAsDataURL(f);
+    // clear input
+    try{ baseInput.value=''; }catch(e){}
+  });
+
+  // ---------- add overlay (image overlay) ----------
+  addOverlayInput.addEventListener('change', (ev)=>{
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) { log('No overlay selected'); return; }
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      const dataUrl = e.target.result;
+      fabric.Image.fromURL(dataUrl, function(img){
+        // scale overlay to reasonable size (25% of canvas width) if large
+        const maxOverlayW = Math.max(64, canvas.getWidth() * 0.25);
+        let scale = 1;
+        if (img.width > maxOverlayW) scale = maxOverlayW / img.width;
+        img.set({
+          left: (canvas.getWidth() - img.width * scale) / 2 || 20,
+          top: (canvas.getHeight() - img.height * scale) / 2 || 20,
+          originX:'left',
+          originY:'top',
+          scaleX: scale,
+          scaleY: scale,
+          selectable: true,
+          hasControls: true
+        });
+        img.overlayName = f.name || ('overlay-' + Date.now());
+        assignUID(img);
+        canvas.add(img).setActiveObject(img);
+        canvas.requestRenderAll();
+        pushState();
+        rebuildOverlayList();
+        log('Overlay added: ' + img.overlayName);
+      }, { crossOrigin:'anonymous' });
+    };
+    reader.readAsDataURL(f);
+    try{ addOverlayInput.value=''; }catch(e){}
+  });
+
+  // ---------- delete selected overlay ----------
+  deleteBtn.addEventListener('click', ()=>{
+    const a = canvas.getActiveObject();
+    if (!a) { log('No object selected to delete'); return; }
+    canvas.remove(a);
+    pushState();
+    rebuildOverlayList();
+    log('Selected object deleted');
+  });
+
+  // ---------- save project (JSON) ----------
+  function download(filename, text){
+    const blob = new Blob([text], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  saveBtn.addEventListener('click', ()=>{
+    try {
+      // Save current canvas JSON (includes overlays). Also include base image data url if we have it.
+      const canvasJSON = canvas.toJSON(['uid','overlayName']);
+      const payload = {
+        baseImageDataUrl: lastBaseImageDataUrl || null,
+        canvas: canvasJSON,
+        exportedAt: new Date().toISOString()
+      };
+      download('fieldar-project.json', JSON.stringify(payload, null, 2));
+      log('Project saved (download started)');
+    } catch(e){ err('Save failed: ' + e); }
+  });
+
+  // ---------- load project ----------
+  loadBtn.addEventListener('click', ()=> loadProjectFile.click());
+  loadProjectFile.addEventListener('change', (ev)=>{
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) { log('No project file selected'); return; }
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      try {
+        const obj = JSON.parse(e.target.result);
+        // load base image (if present)
+        if (obj.baseImageDataUrl){
+          lastBaseImageDataUrl = obj.baseImageDataUrl;
+          fabric.Image.fromURL(obj.baseImageDataUrl, (img)=>{
+            const maxW = window.innerWidth;
+            const maxH = computeAvailableSize().h;
+            const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+            img.set({ originX:'left', originY:'top', selectable:false });
+            img.scale(scale);
+            canvas.setWidth(Math.round(img.width * scale));
+            canvas.setHeight(Math.round(img.height * scale));
+            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+            // then load canvas objects
+            isRestoring = true;
+            canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); rebuildOverlayList(); log('Project loaded'); });
+          }, { crossOrigin:'anonymous' });
+        } else {
+          // no base image, just load canvas JSON
+          isRestoring = true;
+          canvas.loadFromJSON(obj.canvas, ()=>{ canvas.renderAll(); isRestoring=false; pushState(); rebuildOverlayList(); log('Project loaded (no base image)'); });
+        }
+      } catch(e){ err('Load project parse error: ' + e); }
+    };
+    reader.readAsText(f);
+    try{ loadProjectFile.value=''; }catch(e){}
+  });
+
+  // ---------- convert base JPEG -> PNG (client-side) ----------
+  convertPngBtn.addEventListener('click', ()=>{
+    if (!canvas.backgroundImage) { log('No base image to convert'); return; }
+    try {
+      // draw background to offscreen canvas, export PNG, reapply as background and set lastBaseImageDataUrl
+      const bgImg = canvas.backgroundImage;
+      // create temp canvas element
+      const tmp = document.createElement('canvas');
+      tmp.width = Math.round(bgImg.width * bgImg.scaleX);
+      tmp.height = Math.round(bgImg.height * bgImg.scaleY);
+      const ctx = tmp.getContext('2d');
+      // draw source image element scaled
+      if (bgImg._element) {
+        ctx.drawImage(bgImg._element, 0, 0, tmp.width, tmp.height);
+      } else if (bgImg.getElement) {
+        ctx.drawImage(bgImg.getElement(), 0, 0, tmp.width, tmp.height);
+      } else {
+        err('Cannot access background image element for conversion');
+        return;
+      }
+      const png = tmp.toDataURL('image/png');
+      lastBaseImageDataUrl = png;
+      // reapply as fabric image
+      fabric.Image.fromURL(png, (img)=>{
+        img.set({ originX:'left', originY:'top', selectable:false });
+        canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+        pushState();
+        log('Base image converted to PNG and replaced');
+        // trigger download as optional (comment out if not desired)
+        const a = document.createElement('a');
+        a.href = png; a.download = 'base-image.png'; a.click();
+        URL.revokeObjectURL(a.href);
+      }, { crossOrigin:'anonymous' });
+    } catch(e){ err('Convert to PNG failed: ' + e); }
+  });
+
+  // ---------- remove-bg stub ----------
+  removeBgBtn.addEventListener('click', ()=>{
+    // This is a stub. You can hook this to remove.bg or another API.
+    // Example flow: upload lastBaseImageDataUrl to API -> get returned PNG (with transparent bg) -> replace base
+    const confirmMsg = 'This button is a placeholder for remove.bg integration. You can hook an API here.';
+    alert(confirmMsg);
+    log('removeBgBtn clicked (stub). Implement API call here.');
+  });
+
+  // ---------- overlay selection sync & delete via keyboard ---------
+  function getOverlayObjects(){
+    return canvas.getObjects().filter(o=>o.type==='image' && o !== canvas.backgroundImage);
+  }
+
+  canvas.on('selection:created', ()=> rebuildOverlayList());
+  canvas.on('selection:updated', ()=> rebuildOverlayList());
+  canvas.on('selection:cleared', ()=> rebuildOverlayList());
+
+  // Delete with Delete key on keyboard (if available)
+  window.addEventListener('keydown', (ev)=>{
+    if (ev.key === 'Delete' || ev.key === 'Backspace'){
+      const a = canvas.getActiveObject();
+      if (a && a.type === 'image' && a !== canvas.backgroundImage){
+        canvas.remove(a);
+        pushState();
+        rebuildOverlayList();
+      }
+    }
+  });
+
+  // ---------- show/hide UI toggles ----------
+  showHideToolbarBtn.addEventListener('click', ()=>{
+    if (toolbar.style.display === 'none'){
+      toolbar.style.display = 'flex';
+      showHideToolbarBtn.textContent = 'Hide UI';
+    } else {
+      toolbar.style.display = 'none';
+      showHideToolbarBtn.textContent = 'Show UI';
+    }
+  });
+
+  toggleSideBtn.addEventListener('click', ()=>{
+    const hidden = sidePanel.classList.toggle('hidden');
+    toggleSideBtn.textContent = hidden ? 'Show' : 'Hide';
+    fitToViewport();
+  });
+
+  // auto-show side panel in landscape
+  function orientationCheck(){
+    if (window.innerWidth > window.innerHeight){
+      // landscape
+      sidePanel.classList.remove('hidden');
+      toggleSideBtn.textContent = 'Hide';
+    } else {
+      // portrait -> hide side panel by default
+      sidePanel.classList.add('hidden');
+      toggleSideBtn.textContent = 'Show';
+    }
+    fitToViewport();
+  }
+  window.addEventListener('resize', orientationCheck);
+  orientationCheck();
+
+  // ---------- clear side list (remove overlays only) ----------
+  clearSideBtn.addEventListener('click', ()=>{
+    const overlays = getOverlayObjects();
+    overlays.forEach(o=>canvas.remove(o));
+    pushState();
+    rebuildOverlayList();
+    log('All overlay images removed');
+  });
+
+  // ---------- export/import (done above via save/load) ----------
+
+  // ---------- polynomial drawing (with prompted label, centered, yellow text with black stroke) ----------
   let polygonMode = false;
-  let pointCircles = []; // temporary circles for points
-  let lineSegments = []; // temporary lines between points
-  let previewLine = null; // line from last point to pointer
-  let activeTempPolygon = null; // polygon preview
+  let tempPoints = []; // small circles
+  let tempLines = [];
+  let previewPoly = null;
+  let previewLine = null;
 
   function setPolygonMode(on){
     polygonMode = !!on;
-    // clear any temporary helpers if turning off
-    if(!polygonMode) clearTempHelpers();
-    dbgLog('Polygon mode ' + (polygonMode ? 'ON' : 'OFF'));
-  }
-
-  // hook polygon toggle button
-  const polygonBtn = document.getElementById('polygonBtn');
-  if (polygonBtn) {
-    polygonBtn.addEventListener('click', () => {
-      setPolygonMode(!polygonMode);
-    });
-  }
-
-  // finish polygon button
-  function clearTempHelpers(){
-    pointCircles.forEach(c=>canvas.remove(c));
-    lineSegments.forEach(l=>canvas.remove(l));
-    if(previewLine) canvas.remove(previewLine);
-    if(activeTempPolygon) canvas.remove(activeTempPolygon);
-    pointCircles = []; lineSegments = []; previewLine = null; activeTempPolygon = null;
-  }
-
-  function createLabelTextForPolygon(polygon, userText){
-    // create Textbox centered in polygon coordinates
-    const txt = new fabric.Textbox(userText || 'Label', {
-      fontSize: Math.max(12, Math.min(24, Math.round(polygon.width * 0.08))), // responsive size
-      fill: '#FFD400', // yellow
-      stroke: '#000', // black outline
-      strokeWidth: 1,
-      textAlign: 'center',
-      originX: 'center',
-      originY: 'center',
-      editable: true,
-      backgroundColor: 'rgba(255,255,255,0.0)'
-    });
-
-    // position relative to polygon (center)
-    txt.left = polygon.width / 2;
-    txt.top = polygon.height / 2;
-    txt.setCoords();
-    return txt;
-  }
-
-  function finalizePolygonFromTemp(){
-    if (pointCircles.length < 3) {
-      dbgLog('Need at least 3 points to finalize polygon');
-      return;
+    if (!polygonMode) {
+      cleanupTempDrawing();
     }
-    // collect points (x,y) relative to canvas
-    const pts = pointCircles.map(p => ({ x: p.left, y: p.top }));
-    // create polygon
-    const poly = new fabric.Polygon(pts, {
-      fill: 'rgba(255,255,0,0.15)', // faint yellow fill
-      stroke: '#FFD400', // yellow stroke
-      strokeWidth: 2,
-      selectable: true,
-      objectCaching: false
-    });
+    log('Polygon mode ' + (polygonMode ? 'ON' : 'OFF'));
+  }
+  polygonBtn.addEventListener('click', ()=> setPolygonMode(!polygonMode));
+  completePolygonBtn.addEventListener('click', ()=> finalizePolygonFromTemp());
 
-    // create text via prompt
-    let label = prompt("Enter annotation text for this polygon:", ""); // Option B
-    if (label === null) label = ""; // user canceled -> empty label allowed
-
-    const txt = createLabelTextForPolygon(poly, label);
-
-    // group polygon + text
-    const group = new fabric.Group([poly, txt], {
-      left: poly.left,
-      top: poly.top,
-      selectable: true
-    });
-
-    // ensure text recenters when the group changes (scale / move)
-    group.on('modified', () => {
-      try {
-        const polyObj = group.item(0);
-        const txtObj = group.item(1);
-        // center text inside polygon bounds
-        txtObj.left = polyObj.width / 2;
-        txtObj.top = polyObj.height / 2;
-        txtObj.setCoords();
-        canvas.renderAll();
-      } catch (e) {
-        // ignore
-      }
-    });
-
-    // double-click group to edit label
-    // we will handle via canvas 'mouse:dblclick' below
-
-    // add group to canvas
-    canvas.add(group);
-    // remove temp helpers
-    clearTempHelpers();
-    // turn off polygon mode
-    polygonMode = false;
-    dbgLog('Polygon finalized and labeled: "' + label + '"');
-    pushState();
+  function cleanupTempDrawing(){
+    tempPoints.forEach(p=>canvas.remove(p));
+    tempLines.forEach(l=>canvas.remove(l));
+    if (previewPoly) canvas.remove(previewPoly);
+    if (previewLine) canvas.remove(previewLine);
+    tempPoints=[]; tempLines=[]; previewPoly=null; previewLine=null;
+    canvas.renderAll();
   }
 
-  // public finish button wiring if present
-  const completeBtn = document.getElementById('completePolygonBtn') || document.getElementById('finishPolygonBtn') || null;
-  if (completeBtn){
-    completeBtn.addEventListener('click', finalizePolygonFromTemp);
-  }
-
-  // mouse events for building polygon
-  canvas.on('mouse:down', function(opts){
+  canvas.on('mouse:down', function(ev){
     if (!polygonMode) return;
-    const p = canvas.getPointer(opts.e);
-    // create small circle marker
+    const p = canvas.getPointer(ev.e);
     const circ = new fabric.Circle({
-      left: p.x,
-      top: p.y,
-      radius: 5,
-      fill: pointCircles.length === 0 ? 'red' : '#fff',
-      stroke: '#000',
-      strokeWidth: 0.5,
-      originX: 'center',
-      originY: 'center',
-      selectable: false,
-      hasBorders: false,
-      hasControls: false
+      left: p.x, top: p.y, radius: 5, fill: tempPoints.length===0 ? 'red' : '#fff', stroke:'#000',
+      originX:'center', originY:'center', selectable:false
     });
     canvas.add(circ);
-    pointCircles.push(circ);
+    tempPoints.push(circ);
 
-    // add permanent line from previous point to this point
-    if (pointCircles.length > 1){
-      const prev = pointCircles[pointCircles.length - 2];
+    if (tempPoints.length > 1){
+      const prev = tempPoints[tempPoints.length-2];
       const line = new fabric.Line([prev.left, prev.top, circ.left, circ.top], {
-        stroke: '#FFD400',
-        strokeWidth: 2,
-        selectable: false,
-        evented: false
+        stroke:'#FFD400', strokeWidth:2, selectable:false, evented:false
       });
       canvas.add(line);
-      lineSegments.push(line);
+      tempLines.push(line);
     }
 
-    // update polygon preview
-    if (activeTempPolygon) canvas.remove(activeTempPolygon);
-    const previewPoints = pointCircles.map(c=>({x:c.left, y:c.top}));
-    activeTempPolygon = new fabric.Polygon(previewPoints, {
-      fill: 'rgba(255,255,0,0.08)',
-      stroke: '#FFD400',
-      strokeWidth: 1,
-      selectable: false,
-      evented: false
-    });
-    canvas.add(activeTempPolygon);
+    // update preview poly
+    if (previewPoly) canvas.remove(previewPoly);
+    const pts = tempPoints.map(pnt=>({x:pnt.left,y:pnt.top}));
+    previewPoly = new fabric.Polygon(pts, { fill:'rgba(255,210,0,0.08)', stroke:'#FFD400', strokeWidth:1, selectable:false, evented:false });
+    canvas.add(previewPoly);
     canvas.renderAll();
   });
 
-  // live pointer preview line
-  canvas.on('mouse:move', function(opts){
+  canvas.on('mouse:move', function(ev){
     if (!polygonMode) return;
-    const p = canvas.getPointer(opts.e);
-    if (pointCircles.length === 0) return;
-
-    // update preview line from last point to current pointer
-    const last = pointCircles[pointCircles.length - 1];
-    if (previewLine) {
-      canvas.remove(previewLine);
-      previewLine = null;
-    }
-    previewLine = new fabric.Line([last.left, last.top, p.x, p.y], {
-      stroke: '#FFD400',
-      strokeWidth: 1.5,
-      selectable: false,
-      evented: false
-    });
+    const p = canvas.getPointer(ev.e);
+    if (tempPoints.length === 0) return;
+    // preview line
+    if (previewLine) { canvas.remove(previewLine); previewLine=null; }
+    const last = tempPoints[tempPoints.length-1];
+    previewLine = new fabric.Line([last.left,last.top,p.x,p.y], { stroke:'#FFD400', strokeWidth:1.2, selectable:false, evented:false });
     canvas.add(previewLine);
-
-    // Move/replace preview polygon (last vertex is pointer)
-    if (activeTempPolygon){
-      canvas.remove(activeTempPolygon);
-    }
-    const pts = pointCircles.map(c => ({ x: c.left, y: c.top }));
-    pts.push({ x: p.x, y: p.y });
-    activeTempPolygon = new fabric.Polygon(pts, {
-      fill: 'rgba(255,255,0,0.06)',
-      stroke: '#FFD400',
-      strokeWidth: 1,
-      selectable: false,
-      evented: false
-    });
-    canvas.add(activeTempPolygon);
+    // preview polygon with pointer
+    if (previewPoly) { canvas.remove(previewPoly); previewPoly=null; }
+    const pts = tempPoints.map(pnt=>({x:pnt.left,y:pnt.top})); pts.push({x:p.x,y:p.y});
+    previewPoly = new fabric.Polygon(pts, { fill:'rgba(255,210,0,0.06)', stroke:'#FFD400', strokeWidth:1, selectable:false, evented:false });
+    canvas.add(previewPoly);
     canvas.renderAll();
   });
 
-  // right-click or double-click near the first point: convenience finish
-  canvas.on('mouse:dblclick', function(e){
-    // if double-click on a group -> edit label
-    if (e.target && e.target.type === 'group'){
-      const group = e.target;
-      // item(1) is textbox we created earlier
-      const txt = group.item(1);
-      if (txt && txt.isType && txt.isType('textbox')){
-        const newLabel = prompt('Edit annotation text:', txt.text);
-        if (newLabel !== null){
-          txt.text = newLabel;
-          group.setCoords();
+  function finalizePolygonFromTemp(){
+    if (tempPoints.length < 3){ log('Need at least 3 points'); return; }
+    const pts = tempPoints.map(p=>({x:p.left,y:p.top}));
+    // create polygon
+    const poly = new fabric.Polygon(pts, { fill:'rgba(255,255,0,0.15)', stroke:'#FFD400', strokeWidth:2, selectable:true });
+    // prompt for label
+    const label = prompt('Enter annotation text for this polygon:', '');
+    const txt = new fabric.Textbox(label || '', {
+      fontSize: Math.max(12, Math.min(28, Math.round(poly.width * 0.08))),
+      fill:'#FFD400',
+      stroke:'#000',
+      strokeWidth:1,
+      textAlign:'center',
+      originX:'center', originY:'center', editable:true,
+      backgroundColor:'rgba(0,0,0,0)'
+    });
+    // place text centered inside polygon
+    txt.left = poly.width / 2;
+    txt.top = poly.height / 2;
+    txt.setCoords();
+    const group = new fabric.Group([poly, txt], { left: poly.left, top: poly.top, selectable:true });
+    // keep text centered on group modified
+    group.on('modified', ()=>{
+      try {
+        const pObj = group.item(0);
+        const tObj = group.item(1);
+        tObj.left = pObj.width / 2;
+        tObj.top = pObj.height / 2;
+        tObj.setCoords();
+        canvas.renderAll();
+      } catch(e){}
+    });
+    canvas.add(group);
+    cleanupTempDrawing();
+    setPolygonMode(false);
+    pushState();
+    log('Polygon created with label: ' + (label || ''));
+    rebuildOverlayList();
+  }
+
+  // double click to edit label (group)
+  canvas.on('mouse:dblclick', function(ev){
+    if (!ev.target) return;
+    const obj = ev.target;
+    if (obj.type === 'group'){
+      // second item is textbox by our creation pattern
+      const tb = obj._objects && obj._objects[1];
+      if (tb && tb.isType && tb.isType('textbox')){
+        const current = tb.text || '';
+        const newText = prompt('Edit label text:', current);
+        if (newText !== null){
+          tb.text = newText;
+          tb.setCoords();
           canvas.renderAll();
           pushState();
-          dbgLog('Edited label to: ' + newLabel);
+          log('Label updated');
         }
       }
-      return;
-    }
-
-    // If double-click while drawing, check proximity to first point
-    if (polygonMode && pointCircles.length >= 3){
-      const p = canvas.getPointer(e.e);
-      const first = pointCircles[0];
-      const dx = p.x - first.left;
-      const dy = p.y - first.top;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < 12) {
-        // finish
-        finalizePolygonFromTemp();
-      }
     }
   });
 
-  // If user selects a group via object:selected and wants edit prompt (optional)
-  canvas.on('object:selected', function(e){
-    const obj = e.target;
-    // only prompt if it's a Group (polygon+text)
-    if (obj && obj.type === 'group'){
-      // do nothing here -- double-click handles edit to avoid unintentional prompts
-      // but we can optionally highlight or log
-      dbgLog('Group selected (double-click group to edit label).');
+  // ---------- overlay list interactions: click list item -> select object ----------
+  overlayListEl.addEventListener('click', (ev)=>{
+    const node = ev.target.closest('.overlayItem');
+    if (!node) return;
+    const uid = node.dataset.uid;
+    // find object by uid
+    const found = canvas.getObjects().find(o=>o.uid === uid);
+    if (found){
+      canvas.setActiveObject(found);
+      canvas.requestRenderAll();
+      rebuildOverlayList();
     }
   });
 
-  // ---------- Export / Import ----------
-  const exportBtn = document.getElementById('exportBtn');
-  if (exportBtn){
-    exportBtn.addEventListener('click', function(){
+  // ---------- rebuild overlay list initially ----------
+  function initialRebuild(){
+    rebuildOverlayList();
+    // try to restore localStorage state if present (already saved via pushState above)
+    const saved = localStorage.getItem('fieldar_overlays');
+    if (saved){
       try {
-        const json = JSON.stringify(canvas.toJSON());
-        const blob = new Blob([json], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'fieldar-overlays.json';
-        a.click();
-        URL.revokeObjectURL(a.href);
-        dbgLog('Export complete (JSON size ' + json.length + ')');
-      } catch (e) {
-        dbgErr('Export failed: ' + e);
-      }
-    });
-  }
-
-  const importBtn = document.getElementById('importBtn');
-  const importFile = document.getElementById('importFile');
-  if (importBtn && importFile){
-    importBtn.addEventListener('click', ()=> importFile.click());
-    importFile.addEventListener('change', (ev)=>{
-      const f = ev.target.files && ev.target.files[0];
-      if (!f) { dbgLog('No import file selected'); return; }
-      const r = new FileReader();
-      r.onload = (le)=>{
-        try {
-          const obj = JSON.parse(le.target.result);
-          isRestoring = true;
-          canvas.loadFromJSON(obj, () => {
-            canvas.renderAll();
-            isRestoring = false;
-            pushState();
-            dbgLog('Import complete, objects: ' + canvas.getObjects().length);
-          });
-        } catch (e) {
-          dbgErr('Import failed: ' + e);
-          isRestoring = false;
-        }
-      };
-      r.readAsText(f);
-      // clear input
-      try { importFile.value = ''; } catch(e){}
-    });
-  }
-
-  // ---------- Utility: clear selection on background click ----------
-  canvas.on('mouse:down', function(e){
-    if (!e.target && !polygonMode) {
-      canvas.discardActiveObject();
-      canvas.renderAll();
+        // avoid overwriting if user already loaded a project; just pre-seed a restore option
+        // we'll load but don't auto-apply unless user chooses - to keep user control, skip auto-load
+        log('Project found in localStorage (you can Load Project to restore).');
+      } catch(e){}
     }
-  });
+  }
+  initialRebuild();
 
-  // ---------- Public helper exposures (optional) ----------
+  // ---------- export/import JSON via toolbar buttons handled above (save/load) ----------
+
+  // ---------- undo/redo button wiring ----------
+  undoBtn.addEventListener('click', undo);
+  redoBtn.addEventListener('click', redo);
+
+  // ---------- finalize: ensure canvas resizes to fit base or viewport ----------
+  function fitAfterLoad(){
+    if (canvas.backgroundImage){
+      // adjust wrapper canvas size but keep display scaling handled by fabric
+      canvas.calcOffset();
+    }
+    rebuildOverlayList();
+  }
+
+  // expose helpers for console usage
   window.fieldar = {
     canvas,
     pushState,
     undo,
     redo,
     setPolygonMode,
-    finalizePolygonFromTemp: finalizePolygonFromTemp,
+    finalizePolygonFromTemp
   };
 
-  dbgLog('fieldar.js loaded and ready');
+  log('fieldar.js ready');
 })();

@@ -2,103 +2,163 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>FieldAR Annotator</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>FieldAR -- Annotator</title>
 
 <style>
-    body {
-        margin: 0;
-        padding: 0;
-        background: #222;
-        font-family: Arial, sans-serif;
-        color: #eee;
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-        overflow: hidden;
-    }
+  :root{
+    --bg:#111;
+    --panel:#161616;
+    --accent:#2b7bff;
+    --btn:#2b2b2b;
+    --text:#eaeaea;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+  #app { display:flex; height:100vh; width:100vw; overflow:hidden; align-items:stretch; }
 
-    /* Toolbar */
-    #toolbar {
-        background: #111;
-        padding: 8px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-        border-bottom: 2px solid #444;
-    }
+  /* Side panel (overlay list) */
+  #sidePanel {
+    width: 260px;
+    min-width: 200px;
+    max-width: 320px;
+    background:var(--panel);
+    border-right:1px solid #202020;
+    display:flex;
+    flex-direction:column;
+    transition:transform .22s ease;
+    z-index:50;
+  }
+  #sidePanel.hidden { transform: translateX(-100%); }
 
-    #toolbar button {
-        padding: 8px 12px;
-        background: #333;
-        border: 1px solid #666;
-        color: #fff;
-        cursor: pointer;
-        border-radius: 4px;
-    }
+  #sideHeader { padding:10px; border-bottom:1px solid #222; display:flex; justify-content:space-between; align-items:center; gap:6px;}
+  #sideHeader h4 { margin:0; font-size:14px; font-weight:600; color:var(--text); }
+  #overlayList { overflow:auto; padding:8px; flex:1; }
+  .overlayItem { background:#101010; border:1px solid #222; margin-bottom:8px; padding:8px; border-radius:6px; display:flex; gap:8px; align-items:center; cursor:pointer; }
+  .overlayItem.selected { outline:2px solid #FFD400; background:#181818; }
+  .overlayThumb { width:48px; height:36px; object-fit:cover; border-radius:4px; background:#000; border:1px solid #333; }
+  .overlayMeta { flex:1; font-size:13px; color:#ddd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .overlayControls { display:flex; gap:6px; }
 
-    #toolbar button:hover {
-        background: #444;
-    }
+  /* main area */
+  #mainArea { flex:1; position:relative; display:flex; flex-direction:column; min-width:0; }
 
-    #annotatorCanvas {
-        display: block;
-        background: #333;
-    }
+  /* Toolbar minimal */
+  #toolbar {
+    height:44px;
+    min-height:44px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:6px;
+    background:linear-gradient(180deg,#111,#0f0f0f);
+    border-bottom:1px solid #222;
+    z-index:60;
+  }
+  .btn {
+    background:var(--btn);
+    color:var(--text);
+    border:1px solid #2a2a2a;
+    padding:8px 10px;
+    border-radius:8px;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .btn.ghost { background:transparent; border:1px dashed #333; }
+  .btn.small { padding:6px 8px; font-size:12px; border-radius:6px; }
 
-    #debugConsole {
-        height: 160px;
-        overflow-y: auto;
-        background: #000;
-        color: #0f0;
-        font-size: 12px;
-        padding: 6px;
-        border-top: 2px solid #444;
-    }
+  /* Canvas container */
+  #canvasWrap { position:relative; flex:1; display:flex; align-items:center; justify-content:center; background:#222; overflow:hidden; }
+  canvas { background:#333; display:block; max-width:100%; max-height:100%; }
 
-    input[type=file] {
-        display: none;
-    }
+  /* debug console */
+  #debugConsole {
+    height:140px;
+    background:#060606;
+    color:#0f0;
+    font-family:monospace;
+    font-size:12px;
+    overflow:auto;
+    padding:8px;
+    box-sizing:border-box;
+    border-top:1px solid #111;
+  }
+
+  /* top-right toggles */
+  #floatingControls { position:absolute; top:8px; right:8px; display:flex; gap:6px; z-index:70; }
+  .floatBtn { background:rgba(0,0,0,0.45); padding:8px; border-radius:8px; border:1px solid #222; color:var(--text); cursor:pointer; font-size:13px; }
+
+  /* responsive behavior */
+  @media (orientation:portrait) {
+    /* hide side panel by default in portrait */
+    #sidePanel { transform: translateX(-100%); }
+  }
 </style>
 </head>
-
 <body>
+<div id="app">
 
-<!-- ⭐ Toolbar -->
-<div id="toolbar">
-    <button id="undoBtn">Undo</button>
-    <button id="redoBtn">Redo</button>
+  <!-- Side panel (overlays list) -->
+  <aside id="sidePanel" aria-hidden="false">
+    <div id="sideHeader">
+      <h4>Overlays</h4>
+      <div>
+        <button id="toggleSideBtn" class="btn small">Hide</button>
+      </div>
+    </div>
+    <div id="overlayList"></div>
+    <div style="padding:8px;border-top:1px solid #222;">
+      <button id="sideClearBtn" class="btn small">Clear All</button>
+    </div>
+  </aside>
 
-    <button id="polygonBtn">Polygon</button>
-    <button id="finishPolygonBtn">Finish Polygon</button>
+  <!-- Main area -->
+  <div id="mainArea">
 
-    <label for="imageLoader" style="background:#333; padding:8px 12px; border:1px solid #666; border-radius:4px; cursor:pointer;">
-        Select Image
-    </label>
-    <input type="file" id="imageLoader" accept="image/*">
+    <!-- Top toolbar -->
+    <div id="toolbar">
+      <button id="showHideToolbarBtn" class="btn small">Hide UI</button>
 
-    <button id="exportBtn">Export</button>
+      <label for="baseImageInput" class="btn small" style="cursor:pointer;">Load Base Image</label>
+      <input id="baseImageInput" type="file" accept="image/*" style="display:none">
 
-    <label for="importFile" style="background:#333; padding:8px 12px; border:1px solid #666; border-radius:4px; cursor:pointer;">
-        Import
-    </label>
-    <input type="file" id="importFile" accept="application/json" />
+      <label for="addOverlayInput" class="btn small">Add Overlay</label>
+      <input id="addOverlayInput" type="file" accept="image/*" style="display:none">
+
+      <button id="deleteBtn" class="btn small">Delete Selected</button>
+
+      <button id="saveBtn" class="btn small">Save Project</button>
+      <button id="loadBtn" class="btn small">Load Project</button>
+      <input id="loadProjectFile" type="file" accept="application/json" style="display:none">
+
+      <button id="convertPngBtn" class="btn small">Convert Base → PNG</button>
+
+      <button id="removeBgBtn" class="btn small">Remove BG (stub)</button>
+
+      <div style="flex:1"></div>
+
+      <button id="undoBtn" class="btn small">Undo</button>
+      <button id="redoBtn" class="btn small">Redo</button>
+    </div>
+
+    <!-- canvas area -->
+    <div id="canvasWrap">
+      <canvas id="annotatorCanvas"></canvas>
+
+      <!-- floating controls -->
+      <div id="floatingControls">
+        <button id="polygonBtn" class="floatBtn">Polygon</button>
+        <button id="completePolygonBtn" class="floatBtn">Finish</button>
+      </div>
+    </div>
+
+    <!-- Debug console -->
+    <div id="debugConsole">[LOG] Debug console ready<br></div>
+  </div>
 </div>
 
-<!-- ⭐ Main Canvas -->
-<canvas id="annotatorCanvas"></canvas>
-
-<!-- ⭐ Debug Console -->
-<div id="debugConsole">[LOG] Page loaded…<br></div>
-
-<!-- ⭐ Scripts (ORDER MATTERS!) -->
-<!-- 1️⃣ FabricJS (must load FIRST) -->
+<!-- include fabric before our script -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
-
-<!-- 2️⃣ Your Annotator Logic -->
 <script src="fieldar.js"></script>
-
 </body>
 </html>
