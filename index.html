@@ -5,70 +5,37 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FieldAR Annotator</title>
-
 <style>
-body {
-    margin: 0;
-    overflow: hidden;
-    background: #222;
-    color: white;
-    font-family: sans-serif;
-}
-#toolbar {
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    z-index: 10;
-    display: flex;
-    gap: 10px;
-}
-#toolbar button {
-    padding: 8px 14px;
-    font-size: 16px;
-    cursor: pointer;
-}
-#annotatorCanvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-}
-#debugConsole {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    max-height: 200px;
-    overflow-y: auto;
-    background: #222;
-    color: #0f0;
-    font-family: monospace;
-    font-size: 12px;
-    padding: 5px;
-    box-sizing: border-box;
-}
+    body { margin:0; font-family:sans-serif; background:#222; color:white; }
+    #toolbar { position:fixed; top:10px; left:10px; display:flex; gap:8px; z-index:100; }
+    #toolbar button, #toolbar input { padding:8px 12px; font-size:14px; }
+    #annotatorCanvas { position:absolute; top:0; left:0; border:1px solid #555; }
 </style>
 </head>
-
 <body>
 
-<!-- Toolbar -->
 <div id="toolbar">
     <button id="undoBtn">Undo</button>
     <button id="redoBtn">Redo</button>
-    <button id="polygonBtn">Polygon Draw</button>
+    <button id="drawPolyBtn">Draw Polygon</button>
+    <button id="finishPolyBtn">Finish Polygon</button>
     <input type="file" id="imageLoader" accept="image/*">
-    <button id="exportBtn">Export Overlays</button>
-    <input type="file" id="importBtn" accept="application/json">
+    <button id="exportBtn">Export JSON</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none">
+    <button id="importBtn">Import JSON</button>
 </div>
 
-<!-- Fabric Canvas -->
 <canvas id="annotatorCanvas"></canvas>
 
-<!-- Debug Console -->
-<div id="debugConsole"></div>
-
-<!-- Main JS -->
 <script type="module" src="fieldar.js"></script>
+
+<script>
+document.getElementById("drawPolyBtn").onclick = () => startPolygonMode();
+document.getElementById("finishPolyBtn").onclick = () => finishPolygon();
+document.getElementById("exportBtn").onclick = () => exportJSON();
+document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+document.getElementById("importFile").onchange = (e) => importJSON(e.target.files[0]);
+</script>
 
 </body>
 </html>
