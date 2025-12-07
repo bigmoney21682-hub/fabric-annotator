@@ -1,82 +1,88 @@
 // FILE: modules/annotator.js
-export default class Annotator {
-    constructor(canvas) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext("2d");
+import { fabric } from "https://cdn.jsdelivr.net/npm/fabric@5.2.4/dist/fabric.esm.js";
 
-        this.baseImage = null;
-
-        this.dots = [];
+export class Annotator {
+    constructor(canvasElement) {
+        this.canvasElement = canvasElement;
         this.undoStack = [];
         this.redoStack = [];
 
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-
-        this.canvas.addEventListener("click", this.addDot.bind(this));
-
-        console.log("[LOG] Annotator initialized");
+        this._initCanvas();
     }
 
-    setBaseImage(img) {
-        this.baseImage = img;
-        this.resetHistory();
-        this.redraw();
+    _initCanvas() {
+        this.canvas = new fabric.Canvas(this.canvasElement, {
+            selection: false,
+            backgroundColor: "#111"
+        });
+
+        // Fullscreen canvas
+        this._resizeCanvas();
+        window.addEventListener("resize", () => this._resizeCanvas());
+
+        // Add click-to-place-dot behavior
+        this.canvas.on("mouse:down", (opt) => {
+            const p = this.canvas.getPointer(opt.e);
+            this.addDot(p.x, p.y);
+        });
     }
 
-    resetHistory() {
-        this.dots = [];
-        this.undoStack = [];
-        this.redoStack = [];
+    _resizeCanvas() {
+        this.canvas.setWidth(window.innerWidth);
+        this.canvas.setHeight(window.innerHeight);
+        this.canvas.renderAll();
     }
 
-    addDot(event) {
-        if (!this.baseImage) return;
+    loadBaseImage(url) {
+        fabric.Image.fromURL(url, (img) => {
+            const scale = Math.min(
+                window.innerWidth / img.width,
+                window.innerHeight / img.height
+            );
+            img.scale(scale);
+            img.set({ selectable: false });
 
-        const rect = this.canvas.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
+            this.canvas.setBackgroundImage(img, this.canvas.renderAll.bind(this.canvas));
+        });
+    }
 
-        const dot = { x, y };
+    addDot(x, y) {
+        const dot = new fabric.Circle({
+            left: x,
+            top: y,
+            radius: 8,
+            fill: "red",
+            stroke: "white",
+            strokeWidth: 2,
+            hasControls: false,
+            hasBorders: false
+        });
 
-        // Push current state to undo stack
-        this.undoStack.push(JSON.stringify(this.dots));
-        this.redoStack = [];
+        this.canvas.add(dot);
+        this._pushState();
+    }
 
-        this.dots.push(dot);
-
-        this.redraw();
+    _pushState() {
+        const json = this.canvas.toJSON();
+        this.undoStack.push(json);
+        this.redoStack.length = 0; // clear redo stack
     }
 
     undo() {
-        if (this.undoStack.length === 0) return;
+        if (this.undoStack.length <= 1) return; // nothing to undo
+        const current = this.undoStack.pop();
+        this.redoStack.push(current);
 
-        this.redoStack.push(JSON.stringify(this.dots));
-        this.dots = JSON.parse(this.undoStack.pop());
-
-        this.redraw();
+        const prev = this.undoStack[this.undoStack.length - 1];
+        this.canvas.loadFromJSON(prev, () => this.canvas.renderAll());
     }
 
     redo() {
         if (this.redoStack.length === 0) return;
 
-        this.undoStack.push(JSON.stringify(this.dots));
-        this.dots = JSON.parse(this.redoStack.pop());
+        const state = this.redoStack.pop();
+        this.undoStack.push(state);
 
-        this.redraw();
-    }
-
-    redraw() {
-        if (!this.baseImage) return;
-
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.drawImage(this.baseImage, 0, 0, this.canvas.width, this.canvas.height);
-
-        this.ctx.fillStyle = "red";
-        for (const dot of this.dots) {
-            this.ctx.beginPath();
-            this.ctx.arc(dot.x, dot.y, 6, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
+        this.canvas.loadFromJSON(state, () => this.canvas.renderAll());
     }
 }

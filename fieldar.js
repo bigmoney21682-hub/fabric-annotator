@@ -1,27 +1,31 @@
 // FILE: fieldar.js
-import Annotator from './modules/annotator.js';
+import { Annotator } from "./modules/annotator.js";
 
-console.log("[LOG] 🖥 Debug console initialized");
+let annotator = null;
 
-const canvas = document.getElementById("annotatorCanvas");
-const annotator = new Annotator(canvas);
+window.addEventListener("DOMContentLoaded", () => {
+    const canvasEl = document.getElementById("annotatorCanvas");
 
-document.getElementById("undoBtn").addEventListener("click", () => {
-    console.log("[BTN] Undo clicked");
-    annotator.undo();
-});
+    annotator = new Annotator(canvasEl);
 
-document.getElementById("redoBtn").addEventListener("click", () => {
-    console.log("[BTN] Redo clicked");
-    annotator.redo();
-});
+    // --- Hook up buttons ---
+    document.getElementById("undoBtn").addEventListener("click", () => {
+        annotator.undo();
+    });
 
-// Load an image when selected
-document.getElementById("imageLoader").addEventListener("change", e => {
-    const file = e.target.files[0];
-    if (!file) return;
+    document.getElementById("redoBtn").addEventListener("click", () => {
+        annotator.redo();
+    });
 
-    const img = new Image();
-    img.onload = () => annotator.setBaseImage(img);
-    img.src = URL.createObjectURL(file);
+    // Load user-selected base image
+    document.getElementById("imageLoader").addEventListener("change", event => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            annotator.loadBaseImage(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    });
 });
