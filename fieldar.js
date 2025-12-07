@@ -1,5 +1,5 @@
 // FILE: fieldar.js
-// Fabric.js based FieldAR Annotator with Polygon Text Annotations
+// Fabric.js FieldAR Annotator with Polygon Text Annotations (Auto-center Text)
 
 let canvas = new fabric.Canvas('annotatorCanvas');
 let undoStack = [];
@@ -90,8 +90,6 @@ function finishPolygon() {
 
     // Add editable text
     let text = new fabric.Textbox('Tap to Edit', {
-        left: polygon.left + polygon.width/2,
-        top: polygon.top + polygon.height/2,
         fontSize: 16,
         fill: '#000',
         backgroundColor: 'rgba(255,255,255,0.7)',
@@ -100,9 +98,23 @@ function finishPolygon() {
         originY: 'center'
     });
 
+    // Center text on polygon
+    text.left = polygon.width / 2;
+    text.top = polygon.height / 2;
+
     let group = new fabric.Group([polygon, text], {
         left: polygon.left,
         top: polygon.top
+    });
+
+    // Make text always stay centered when moving/scaling group
+    group.on('modified', ()=>{
+        let poly = group.item(0);
+        let txt = group.item(1);
+        txt.left = poly.width / 2;
+        txt.top = poly.height / 2;
+        txt.setCoords();
+        canvas.renderAll();
     });
 
     canvas.add(group);
