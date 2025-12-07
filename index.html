@@ -6,71 +6,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FieldAR Annotator</title>
 
-<!-- FABRIC.JS CDN -->
+<!-- Fabric.js CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.1.0/fabric.min.js"></script>
 
-<!-- STYLES -->
+<!-- FieldAR Core + UI -->
+<script src="fieldar.js" defer></script>
+
 <style>
-body {
-    margin: 0;
-    overflow: hidden;
-    font-family: sans-serif;
-    background: #222;
-    color: #fff;
-}
-#toolbar {
-    position: fixed;
-    top: 5px;
-    left: 5px;
-    z-index: 10000;
-    display: flex;
-    gap: 5px;
-}
-#toolbar button, #toolbar input {
-    padding: 8px 12px;
-    font-size: 14px;
-}
-#debugConsole {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    max-height: 200px;
-    overflow-y: auto;
-    background: #222;
-    color: #0f0;
-    font-family: monospace;
-    font-size: 12px;
-    padding: 5px;
-    box-sizing: border-box;
-}
-canvas {
-    display: block;
-    position: absolute;
-    top: 0;
-    left: 0;
-}
+body { margin:0; font-family: Arial; text-align:center; background:#222; color:#fff; }
+#toolbar { position: fixed; top:5px; left:5px; z-index:1000; display:flex; gap:5px; flex-wrap:wrap;}
+#toolbar button, #toolbar input { padding:6px 10px; font-size:14px; }
+#annotatorCanvas { border:1px solid #555; display:block; margin:50px auto 0; }
+#debugConsole { position:fixed; bottom:0; left:0; width:100%; max-height:150px; overflow-y:auto; background:#111; color:#0f0; font-family:monospace; font-size:12px; padding:4px; box-sizing:border-box;}
 </style>
 </head>
 <body>
 
-<h2 style="text-align:center;position:fixed;top:5px;width:100%;z-index:1000;">FieldAR HUD</h2>
+<div id="toolbar">
+    <button id="undoBtn">Undo</button>
+    <button id="redoBtn">Redo</button>
+    <button id="polyBtn">Polygon Draw</button>
+    <button id="deleteBtn">Delete Overlay</button>
+    <input type="file" id="imageLoader" accept="image/*">
+    <button id="exportBtn">Export JSON</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none">
+</div>
 
-<!-- TOOLBAR + DEBUG CONSOLE ARE CREATED BY fieldar-ui.js -->
-
-<!-- MAIN IMAGE (optional initial background) -->
-<img id="main-image" src="./icons/Blue_GCPA-removebg-preview.png" alt="Base Image" style="display:none;">
-
-<!-- SCRIPTS -->
-<script src="fieldar-core.js"></script>
-<script src="fieldar-ui.js"></script>
-
-<!-- INIT FIELDAR -->
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-    initFieldAR('#main-image'); // Initialize canvas using the main image
-});
-</script>
+<canvas id="annotatorCanvas"></canvas>
+<div id="debugConsole"></div>
 
 </body>
 </html>
