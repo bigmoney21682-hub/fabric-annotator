@@ -1,76 +1,64 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FieldAR Annotator</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FieldAR Annotator</title>
 
-    <!-- Manifest -->
-    <link rel="manifest" href="./manifest.json">
+<!-- PWA Manifest -->
+<link rel="manifest" href="./manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
 
-    <!-- iOS PWA -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
+<!-- Styles -->
+<link rel="stylesheet" href="./dist/fab-annotator.css">
 
-    <!-- Annotator Styles -->
-    <link rel="stylesheet" href="./dist/fab-annotator.css">
+<!-- Fabric Annotator -->
+<script src="./dist/fab-annotator.js"></script>
 
-    <!-- Annotator Script -->
-    <script src="./dist/fab-annotator.js"></script>
-
-    <!-- Service Worker -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./service-worker.js')
-          .then(() => console.log('Service Worker Registered!'))
-          .catch(err => console.error('SW Error:', err));
-      }
-    </script>
-
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            text-align: center;
-            background: #f4f4f4;
-            font-family: Arial, sans-serif;
-        }
-        #main-image {
-            max-width: 95vw;
-            border: 1px solid #aaa;
-        }
-        #btn-row {
-            margin-top: 12px;
-        }
-        button {
-            padding: 10px 15px;
-            margin: 5px;
-            border: none;
-            background: #2b7bff;
-            color: white;
-            border-radius: 5px;
-            font-size: 15px;
-        }
-        button:active {
-            opacity: 0.6;
-        }
-        #debugConsole {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            max-height: 200px;
-            background: rgba(0,0,0,0.85);
-            color: #0f0;
-            font-family: monospace;
-            font-size: 12px;
-            overflow-y: auto;
-            padding: 5px;
-            box-sizing: border-box;
-            z-index: 9999;
-        }
-    </style>
+<style>
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #f4f4f4;
+}
+#main-image {
+    max-width: 95vw;
+    border: 1px solid #aaa;
+    margin-top: 10px;
+}
+#btn-row {
+    margin-top: 12px;
+}
+button {
+    padding: 10px 15px;
+    margin: 5px;
+    border: none;
+    background: #2b7bff;
+    color: white;
+    border-radius: 5px;
+    font-size: 15px;
+}
+button:active {
+    opacity: 0.6;
+}
+#debugConsole {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #222;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 5px;
+    box-sizing: border-box;
+}
+</style>
 </head>
-
 <body>
 
 <h2>FieldAR HUD</h2>
@@ -81,142 +69,129 @@
 <div id="btn-row">
     <button id="exportBtn">Export Overlays</button>
     <button id="importBtn">Import Overlays</button>
-    <button id="undoBtn">Undo</button>
-    <button id="redoBtn">Redo</button>
     <input type="file" id="importFile" accept="application/json" style="display:none">
 </div>
 
+<!-- Debug Console -->
 <div id="debugConsole"></div>
 
 <script>
-(function(){
-    // On-screen debug console
-    const dbg = document.getElementById("debugConsole");
-    function log(msg, type="log") {
-        const entry = document.createElement("div");
-        entry.textContent = `[${type.toUpperCase()}] ${msg}`;
-        dbg.appendChild(entry);
-        dbg.scrollTop = dbg.scrollHeight;
-        console[type]("[Console] " + msg);
-    }
-    log("🖥 Debug console initialized");
+// ====== On-screen debug console ======
+const debugConsole = document.getElementById("debugConsole");
+function log(msg) {
+    console.log(msg);
+    debugConsole.innerHTML += `[LOG] ${msg}<br>`;
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+}
+function error(msg) {
+    console.error(msg);
+    debugConsole.innerHTML += `[ERROR] ${msg}<br>`;
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+}
+log("🖥 Debug console initialized");
 
-    // Init FieldAR
-    window.onload = function () {
-        const img = document.getElementById("main-image");
-        if(!img) { log("❌ Main image not found", "error"); return; }
+// ====== Initialize Fabric annotator ======
+window.onload = function() {
+    log("Initializing annotator...");
 
-        log("Initializing annotator...");
-        const canvas = annoFabric.initCanvas("#main-image", {
-            annotationTextField:
-                "<select class='form-control' name='annotation-text-field'>" +
-                    "<option value='Tag 1'>Tag 1</option>" +
-                    "<option value='Tag 2'>Tag 2</option>" +
-                    "<option value='Tag 3'>Tag 3</option>" +
-                "</select>",
-            canvasHeight: img.clientHeight,
-            canvasWidth: img.clientWidth
-        });
+    const img = document.getElementById("main-image");
+
+    // Initialize canvas
+    annoFabric.initCanvas("#main-image", {
+        annotationTextField:
+            "<select class='form-control' name='annotation-text-field'>" +
+                "<option value='Tag 1'>Tag 1</option>" +
+                "<option value='Tag 2'>Tag 2</option>" +
+                "<option value='Tag 3'>Tag 3</option>" +
+            "</select>",
+        canvasHeight: img.clientHeight,
+        canvasWidth: img.clientWidth
+    });
+
+    // Small delay to ensure Fabric canvas exists
+    setTimeout(() => {
+        const canvas = window._canvas;
+        if (!canvas) {
+            error("Canvas not initialized!");
+            return;
+        }
         window.fieldARCanvas = canvas;
+        log("Canvas ready");
 
-        // =========================
-        // Load saved overlays
-        // =========================
+        // ====== Auto-load saved overlays ======
         const saved = localStorage.getItem("fieldar_overlays");
-        if(saved) {
+        if (saved) {
             try {
                 canvas.loadFromJSON(JSON.parse(saved), () => {
                     canvas.renderAll();
                     log("Restored saved overlays");
                 });
-            } catch(e) {
-                log("Invalid saved overlays", "error");
+            } catch (err) {
+                error("Failed to load saved overlays");
             }
         }
 
-        // =========================
-        // History stacks for undo/redo
-        // =========================
-        let undoStack = [];
-        let redoStack = [];
-        function saveState() {
-            undoStack.push(JSON.stringify(canvas.toJSON()));
-            redoStack = [];
-            log("State saved. Undo stack size: " + undoStack.length);
+        // ====== Auto-save on change ======
+        function save() {
+            const data = JSON.stringify(canvas.toJSON());
+            localStorage.setItem("fieldar_overlays", data);
+            log("Saved overlays");
         }
+        canvas.on('object:added', save);
+        canvas.on('object:modified', save);
+        canvas.on('object:removed', save);
 
-        canvas.on('object:added', saveState);
-        canvas.on('object:modified', saveState);
-        canvas.on('object:removed', saveState);
-
-        // Initial state
-        undoStack.push(JSON.stringify(canvas.toJSON()));
-
-        // =========================
-        // Export
-        // =========================
-        document.getElementById("exportBtn").onclick = function(){
+        // ====== EXPORT BUTTON ======
+        document.getElementById("exportBtn").onclick = () => {
             log("Export button clicked");
-            if(!canvas) { log("No canvas found. Cannot export", "error"); return; }
             const json = JSON.stringify(canvas.toJSON());
-            const blob = new Blob([json], {type:"application/json"});
+            const blob = new Blob([json], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
             a.download = "fieldar-overlays.json";
             a.click();
             URL.revokeObjectURL(url);
-            log("Export complete. JSON size: " + json.length);
+            log("Export complete, JSON size: " + json.length);
         };
 
-        // =========================
-        // Import
-        // =========================
-        document.getElementById("importBtn").onclick = function(){
+        // ====== IMPORT BUTTON ======
+        document.getElementById("importBtn").onclick = () => {
             log("Import button clicked");
             document.getElementById("importFile").click();
         };
-        document.getElementById("importFile").onchange = function(e){
+
+        document.getElementById("importFile").onchange = (e) => {
             log("Import file selected");
             const file = e.target.files[0];
-            if(!file) { log("No import file selected", "error"); return; }
+            if (!file) return error("No file selected");
 
             const reader = new FileReader();
-            reader.onload = function(evt){
-                let data;
-                try { data = JSON.parse(evt.target.result); log("Import JSON parsed"); }
-                catch(err){ log("Failed to parse JSON", "error"); return; }
-
-                if(!canvas) { log("Canvas not initialized. Cannot load overlays", "error"); return; }
-                canvas.loadFromJSON(data, () => {
-                    canvas.renderAll();
-                    log("Import complete. Objects loaded: " + canvas.getObjects().length);
-                    localStorage.setItem("fieldar_overlays", JSON.stringify(data));
-                });
+            reader.onload = (ev) => {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    log("Import JSON parsed: " + JSON.stringify(data).substring(0, 200));
+                    canvas.loadFromJSON(data, () => {
+                        canvas.renderAll();
+                        log("Overlays imported: " + canvas.getObjects().length);
+                        localStorage.setItem("fieldar_overlays", JSON.stringify(data));
+                    });
+                } catch (err) {
+                    error("Failed to parse JSON");
+                }
             };
             reader.readAsText(file);
         };
 
-        // =========================
-        // Undo/Redo
-        // =========================
-        document.getElementById("undoBtn").onclick = function(){
-            if(undoStack.length>1){
-                const current = undoStack.pop();
-                redoStack.push(current);
-                const prev = undoStack[undoStack.length-1];
-                canvas.loadFromJSON(prev, ()=>{ canvas.renderAll(); log("Undo performed"); });
-            } else { log("Nothing to undo"); }
-        };
-        document.getElementById("redoBtn").onclick = function(){
-            if(redoStack.length>0){
-                const state = redoStack.pop();
-                undoStack.push(state);
-                canvas.loadFromJSON(state, ()=>{ canvas.renderAll(); log("Redo performed"); });
-            } else { log("Nothing to redo"); }
-        };
-    };
-})();
+    }, 200); // Wait 200ms for canvas to initialize
+};
+
+// ====== Optional: Service Worker registration ======
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js')
+        .then(() => log("Service Worker Registered!"))
+        .catch(err => error("Service Worker Error: " + err));
+}
 </script>
 
 </body>
