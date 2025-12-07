@@ -2,38 +2,76 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FieldAR Annotator</title>
-    <style>
-        body { margin:0; padding:0; font-family:Arial; background:#222; color:white; overflow:hidden; }
-        #toolbar { position:fixed; top:0; left:0; width:100%; display:flex; gap:8px; padding:6px; background:rgba(0,0,0,0.6); z-index:1000; }
-        #toolbar button, #toolbar input { font-size:14px; padding:6px 10px; }
-        #annotatorCanvas { position:absolute; top:40px; left:0; border:1px solid #555; }
-        #debugConsole { position:fixed; bottom:0; left:0; width:100%; max-height:150px; overflow-y:auto; background:#111; color:#0f0; font-family:monospace; font-size:12px; padding:4px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FieldAR Annotator</title>
+
+<!-- Fabric.js CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.1.0/fabric.min.js"></script>
+
+<!-- FieldAR script -->
+<script src="fieldar.js" defer></script>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #222;
+    color: white;
+    overflow: hidden;
+}
+
+#toolbar {
+    position: fixed;
+    top: 5px;
+    left: 5px;
+    z-index: 9999;
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+#toolbar button, #toolbar input[type=file] {
+    padding: 5px 10px;
+    font-size: 14px;
+}
+
+#annotatorCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#debugConsole {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 150px;
+    overflow-y: auto;
+    background: #111;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 5px;
+    box-sizing: border-box;
+}
+</style>
 </head>
 <body>
 
 <div id="toolbar">
     <button id="undoBtn">Undo</button>
     <button id="redoBtn">Redo</button>
-    <button id="polygonBtn">Polygon Draw</button>
-    <button id="deleteBtn">Delete Selected</button>
-    <button id="saveBtn">Save</button>
-    <button id="toggleToolbarBtn">Toggle Toolbar</button>
-    <button id="convertPngBtn">Convert JPEG→PNG</button>
+    <button id="togglePolygonBtn">Polygon Mode</button>
     <input type="file" id="imageLoader" accept="image/*">
+    <button id="deleteBtn">Delete Selected</button>
+    <button id="saveBtn">Save JSON</button>
+    <button id="loadBtn">Load JSON</button>
 </div>
 
 <canvas id="annotatorCanvas"></canvas>
 <div id="debugConsole"></div>
-
-<!-- Fabric.js CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.1.0/fabric.min.js"></script>
-
-<!-- Main FieldAR JS -->
-<script src="fieldar.js"></script>
 
 </body>
 </html>

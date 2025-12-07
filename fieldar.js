@@ -1,63 +1,35 @@
 // FILE: fieldar.js
-let canvas, undoStack=[], redoStack=[], polygonMode=false, points=[], tempLines=[];
-let currentBgImage = null;
+// Full FieldAR functionality: undo/redo, polygon draw, image load, annotation, save/load
+
+console.log("🖥 FieldAR script loaded");
+
+let canvas = new fabric.Canvas('annotatorCanvas', {selection: true});
+let polygonMode = false;
+let activeLine = null;
+let activeShape = null;
+let pointArray = [];
+let lineArray = [];
+let undoStack = [];
+let redoStack = [];
+
 const debugConsole = document.getElementById("debugConsole");
-const toolbar = document.getElementById("toolbar");
+function log(msg){ console.log(msg); debugConsole.innerHTML += `[LOG] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight; }
+function error(msg){ console.error(msg); debugConsole.innerHTML += `[ERROR] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight; }
 
-function log(msg){ debugConsole.innerHTML += `[LOG] ${msg}<br>`; debugConsole.scrollTop = debugConsole.scrollHeight; }
-function saveState(){ undoStack.push(JSON.stringify(canvas)); log("State saved"); }
-function restoreState(stackFrom, stackTo){
-    if(stackFrom.length>0){
-        let state = stackFrom.pop();
-        canvas.loadFromJSON(state, ()=>{canvas.renderAll();});
-        stackTo.push(state);
-        log("State restored");
-    }
-}
+log("🖥 Debug console initialized");
 
-// --- Initialize canvas ---
-canvas = new fabric.Canvas('annotatorCanvas');
-canvas.selection = true;
-
-// --- Buttons ---
-document.getElementById("undoBtn").onclick = ()=>restoreState(undoStack, redoStack);
-document.getElementById("redoBtn").onclick = ()=>restoreState(redoStack, undoStack);
-document.getElementById("polygonBtn").onclick = ()=>{
-    polygonMode=!polygonMode;
-    points.forEach(p=>canvas.remove(p));
-    tempLines.forEach(l=>canvas.remove(l));
-    points=[]; tempLines=[];
-    canvas.renderAll();
-    log("Polygon draw " + (polygonMode?"enabled":"disabled"));
-};
-document.getElementById("saveBtn").onclick = ()=>{
-    localStorage.setItem("fieldar_overlays", JSON.stringify(canvas.toJSON()));
-    log("Canvas saved to localStorage");
-};
-document.getElementById("deleteBtn").onclick = ()=>{
-    const obj = canvas.getActiveObject();
-    if(obj){ canvas.remove(obj); log("Deleted selected object"); saveState(); }
-};
-document.getElementById("toggleToolbarBtn").onclick = ()=>{
-    toolbar.style.display = toolbar.style.display==="none"?"flex":"none";
-    log("Toolbar " + (toolbar.style.display==="none"?"hidden":"visible"));
-};
-document.getElementById("convertPngBtn").onclick = ()=>{
-    const dataURL = canvas.toDataURL({format:'png'});
-    const a = document.createElement('a'); a.href=dataURL; a.download='fieldar_converted.png'; a.click();
-    log("Converted canvas to PNG and downloaded");
-};
-
-// --- Load image ---
+// ------------------- IMAGE LOAD -------------------
 document.getElementById("imageLoader").onchange = function(e){
     const reader = new FileReader();
     reader.onload = function(event){
         fabric.Image.fromURL(event.target.result, function(img){
-            currentBgImage = img;
-            canvas.originalWidth = img.width;
-            canvas.originalHeight = img.height;
-            resizeCanvas();
-            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {originX:'left', originY:'top'});
+            canvas.clear();
+            canvas.setWidth(img.width);
+            canvas.setHeight(img.height);
+            canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+                originX: 'left',
+                originY: 'top'
+            });
             saveState();
             log(`Loaded image: ${img.width}x${img.height}`);
         });
@@ -65,83 +37,131 @@ document.getElementById("imageLoader").onchange = function(e){
     reader.readAsDataURL(e.target.files[0]);
 };
 
-// --- Auto-save ---
-canvas.on('object:added', saveState);
-canvas.on('object:modified', saveState);
-canvas.on('object:removed', saveState);
-
-// --- Polygon drawing ---
-canvas.on('mouse:down', function(options){
-    if(!polygonMode) return;
-    const pointer = canvas.getPointer(options.e);
-    const circle = new fabric.Circle({
-        left:pointer.x, top:pointer.y, radius:5, fill:'red', selectable:false, originX:'center', originY:'center'
-    });
-    canvas.add(circle); points.push(circle);
-    if(points.length>1){
-        const prev = points[points.length-2];
-        const line = new fabric.Line([prev.left, prev.top, circle.left, circle.top], {stroke:'yellow', strokeWidth:2, selectable:false});
-        canvas.add(line); tempLines.push(line);
-    }
-});
-canvas.on('mouse:dblclick', function(){
-    if(points.length<3) return;
-    const polygonPoints = points.map(p=>({x:p.left,y:p.top}));
-    const polygon = new fabric.Polygon(polygonPoints,{fill:'rgba(0,0,255,0.2)', stroke:'blue', strokeWidth:2});
-    const center = polygon.getCenterPoint();
-    const text = new fabric.Textbox('Annotation',{
-        left:center.x, top:center.y, fontSize:16, fill:'white', originX:'center', originY:'center', editable:true
-    });
-    const group = new fabric.Group([polygon,text], {selectable:true});
-    canvas.add(group);
-    points.forEach(p=>canvas.remove(p));
-    tempLines.forEach(l=>canvas.remove(l));
-    points=[]; tempLines=[]; polygonMode=false; canvas.renderAll(); saveState();
-    log("Polygon finalized with annotation");
-});
-
-// --- Responsive resize ---
-function resizeCanvas(){
-    if(!currentBgImage) return;
-    const scaleX = window.innerWidth / canvas.originalWidth;
-    const scaleY = (window.innerHeight - 160) / canvas.originalHeight;
-    const scale = Math.min(scaleX, scaleY);
-
-    canvas.setWidth(canvas.originalWidth * scale);
-    canvas.setHeight(canvas.originalHeight * scale);
-
-    currentBgImage.scale(scale);
-    canvas.setBackgroundImage(currentBgImage, canvas.renderAll.bind(canvas));
-
-    // Scale all objects proportionally
-    canvas.getObjects().forEach(obj=>{
-        if(!obj.originalLeft){ obj.originalLeft = obj.left; obj.originalTop = obj.top; obj.originalScaleX = obj.scaleX; obj.originalScaleY = obj.scaleY; }
-        const leftScale = obj.originalLeft * scale;
-        const topScale = obj.originalTop * scale;
-        const scaleXObj = obj.originalScaleX * scale;
-        const scaleYObj = obj.originalScaleY * scale;
-
-        obj.scaleX = scaleXObj;
-        obj.scaleY = scaleYObj;
-        obj.left = leftScale;
-        obj.top = topScale;
-        obj.setCoords();
-    });
-    canvas.renderAll();
-    log(`Canvas resized: ${canvas.width}x${canvas.height}`);
+// ------------------- UNDO / REDO -------------------
+function saveState() {
+    undoStack.push(JSON.stringify(canvas.toJSON()));
+    redoStack = []; // clear redo on new action
 }
 
-// --- Orientation toolbar ---
-function adjustToolbarForOrientation(){
-    if(window.innerHeight > window.innerWidth){
-        toolbar.style.display='none';
-        log("Portrait: toolbar hidden");
+function undo() {
+    if (undoStack.length > 1){
+        redoStack.push(undoStack.pop());
+        canvas.loadFromJSON(undoStack[undoStack.length-1], canvas.renderAll.bind(canvas));
+        log("Undo performed");
     } else {
-        toolbar.style.display='flex';
-        log("Landscape: toolbar visible");
+        log("Nothing to undo");
     }
 }
 
-window.addEventListener('resize', ()=>{resizeCanvas(); adjustToolbarForOrientation();});
-window.addEventListener('orientationchange', ()=>{resizeCanvas(); adjustToolbarForOrientation();});
-adjustToolbarForOrientation();
+function redo() {
+    if (redoStack.length > 0){
+        const state = redoStack.pop();
+        undoStack.push(state);
+        canvas.loadFromJSON(state, canvas.renderAll.bind(canvas));
+        log("Redo performed");
+    } else {
+        log("Nothing to redo");
+    }
+}
+
+// ------------------- POLYGON DRAW -------------------
+document.getElementById("togglePolygonBtn").onclick = function(){
+    polygonMode = !polygonMode;
+    log(`Polygon mode ${polygonMode ? "ON" : "OFF"}`);
+};
+
+// Mouse events for polygon
+canvas.on('mouse:down', function(options){
+    if(polygonMode){
+        const pointer = canvas.getPointer(options.e);
+        const circle = new fabric.Circle({
+            radius: 5,
+            fill: pointArray.length===0 ? 'red':'white',
+            left: pointer.x,
+            top: pointer.y,
+            selectable: false,
+            originX:'center',
+            originY:'center'
+        });
+        pointArray.push(circle);
+        canvas.add(circle);
+
+        if(pointArray.length>1){
+            const points = [pointArray[pointArray.length-2].left, pointArray[pointArray.length-2].top, pointer.x, pointer.y];
+            const line = new fabric.Line(points, {stroke: '#0ff', selectable: false});
+            lineArray.push(line);
+            canvas.add(line);
+            activeLine = line;
+        }
+    }
+});
+
+canvas.on('mouse:dblclick', function(){
+    if(polygonMode && pointArray.length>2){
+        const points = pointArray.map(p => ({x: p.left, y: p.top}));
+        pointArray.forEach(p => canvas.remove(p));
+        lineArray.forEach(l => canvas.remove(l));
+
+        const polygon = new fabric.Polygon(points, {
+            stroke: '#0ff',
+            strokeWidth: 2,
+            fill: 'rgba(0,255,255,0.3)'
+        });
+
+        canvas.add(polygon);
+        saveState();
+
+        polygonMode = false;
+        pointArray=[];
+        lineArray=[];
+        log("Polygon created");
+    }
+});
+
+// ------------------- DELETE -------------------
+document.getElementById("deleteBtn").onclick = function(){
+    const obj = canvas.getActiveObject();
+    if(obj){
+        canvas.remove(obj);
+        saveState();
+        log("Selected object deleted");
+    }
+};
+
+// ------------------- SAVE / LOAD JSON -------------------
+document.getElementById("saveBtn").onclick = function(){
+    const json = JSON.stringify(canvas.toJSON());
+    const blob = new Blob([json], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "fieldar-overlays.json";
+    a.click();
+    log("Canvas JSON saved");
+};
+
+document.getElementById("loadBtn").onclick = function(){
+    const input = document.createElement("input");
+    input.type="file";
+    input.accept="application/json";
+    input.onchange = e=>{
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = event=>{
+            canvas.loadFromJSON(event.target.result, ()=>{
+                canvas.renderAll();
+                saveState();
+                log("Canvas JSON loaded");
+            });
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+};
+
+// ------------------- UNDO / REDO BUTTONS -------------------
+document.getElementById("undoBtn").onclick = undo;
+document.getElementById("redoBtn").onclick = redo;
+
+// ------------------- INITIAL STATE -------------------
+saveState();
+log("FieldAR ready!");
