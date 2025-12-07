@@ -1,89 +1,232 @@
 // FILE: fieldar.js
-import Annotator from "./modules/annotator.js";
+// Author: Oshane Bailey
+// Purpose: Full FieldAR Annotator logic
+// Features: Undo/Redo, Polygon Draw toggle, Image upload & resize, Import/Export overlays, Autosave, Debug console
 
-const dbg = document.getElementById("debugConsole");
-function log(msg){ dbg.innerHTML += `[LOG] ${new Date().toLocaleTimeString()}: ${msg}<br>`; dbg.scrollTop = dbg.scrollHeight; console.log(msg); }
-function error(msg){ dbg.innerHTML += `[ERROR] ${new Date().toLocaleTimeString()}: ${msg}<br>`; dbg.scrollTop = dbg.scrollHeight; console.error(msg); }
+// ----------------------------
+// DEBUG CONSOLE UTILS
+// ----------------------------
+const debugConsole = document.createElement("div");
+debugConsole.id = "debugConsole";
+debugConsole.style.position = "fixed";
+debugConsole.style.bottom = "0";
+debugConsole.style.left = "0";
+debugConsole.style.width = "100%";
+debugConsole.style.maxHeight = "200px";
+debugConsole.style.overflowY = "auto";
+debugConsole.style.background = "#222";
+debugConsole.style.color = "#0f0";
+debugConsole.style.fontFamily = "monospace";
+debugConsole.style.fontSize = "12px";
+debugConsole.style.padding = "5px";
+document.body.appendChild(debugConsole);
 
-log("fieldar.js starting");
+function log(msg) {
+    console.log(msg);
+    debugConsole.innerHTML += `[LOG] ${msg}<br>`;
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+}
 
-// instantiate annotator when DOM ready
-window.addEventListener("DOMContentLoaded", async () => {
-  const canvasEl = document.getElementById("annotatorCanvas");
-  const annotator = new Annotator(canvasEl, { debugLog: log });
+function error(msg) {
+    console.error(msg);
+    debugConsole.innerHTML += `[ERROR] ${msg}<br>`;
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+}
 
-  // wire controls
-  document.getElementById("undoBtn").addEventListener("click", () => {
-    annotator.undo();
-    log("Undo triggered");
-  });
+log("🖥 Debug console initialized");
 
-  document.getElementById("redoBtn").addEventListener("click", () => {
-    annotator.redo();
-    log("Redo triggered");
-  });
+// ----------------------------
+// GLOBAL VARIABLES
+// ----------------------------
+let canvas;
+let undoStack = [];
+let redoStack = [];
+let polygonMode = false;
+let pointArray = [];
+let lineArray = [];
+let activeLine = null;
+let activeShape = null;
 
-  // Load base image from file input
-  const imageLoader = document.getElementById("imageLoader");
-  imageLoader.addEventListener("change", (ev) => {
-    const f = ev.target.files && ev.target.files[0];
-    if (!f) return error("No image file selected");
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      annotator.loadBaseImage(e.target.result);
-      log(`Base image loaded (${f.name})`);
+// ----------------------------
+// INIT CANVAS
+// ----------------------------
+window.onload = function () {
+    const canvasEl = document.getElementById("annotatorCanvas");
+    canvas = new fabric.Canvas(canvasEl, {
+        selection: true
+    });
+
+    log(`Canvas initialized: ${canvas.getWidth()}x${canvas.getHeight()}`);
+
+    loadState();
+
+    // Auto-save on change
+    canvas.on('object:added', saveState);
+    canvas.on('object:modified', saveState);
+    canvas.on('object:removed', saveState);
+
+    // ----------------------------
+    // IMAGE UPLOAD
+    // ----------------------------
+    document.getElementById("imageLoader").onchange = function (e) {
+        let reader = new FileReader();
+        reader.onload = function (event) {
+            fabric.Image.fromURL(event.target.result, function (img) {
+                // Resize canvas to image size
+                canvas.setWidth(img.width);
+                canvas.setHeight(img.height);
+
+                // Set background
+                canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+                    originX: 'left',
+                    originY: 'top'
+                });
+
+                saveState();
+                log(`Loaded image: ${img.width}x${img.height}`);
+            });
+        };
+        reader.readAsDataURL(e.target.files[0]);
     };
-    reader.readAsDataURL(f);
-  });
 
-  // ----- EXPORT overlays to JSON -----
-  document.getElementById("exportBtn").addEventListener("click", () => {
-    try {
-      const payload = annotator.toJSON();
-      const json = JSON.stringify(payload, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "fieldar-overlays.json";
-      a.click();
-      URL.revokeObjectURL(url);
-      log(`Exported overlays -- ${json.length} bytes`);
-    } catch (err) {
-      error("Export failed: " + err);
-    }
-  });
-
-  // ----- IMPORT overlays from JSON file -----
-  const importFile = document.getElementById("importFile");
-  importFile.addEventListener("change", (ev) => {
-    const f = ev.target.files && ev.target.files[0];
-    if (!f) return error("No JSON file selected for import");
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const obj = JSON.parse(e.target.result);
-        // allow both { overlays: [...], imageWidth:..., imageHeight:... } or canvas JSON
-        annotator.loadFromJSON(obj);
-        log(`Imported overlays from ${f.name}`);
-      } catch (err) {
-        error("Failed to parse import JSON: " + err);
-      }
+    // ----------------------------
+    // UNDO / REDO BUTTONS
+    // ----------------------------
+    document.getElementById("undoBtn").onclick = function () {
+        if (undoStack.length > 0) {
+            redoStack.push(JSON.stringify(canvas.toJSON()));
+            const prev = undoStack.pop();
+            canvas.loadFromJSON(prev, () => canvas.renderAll());
+            log("Undo performed");
+        } else {
+            log("Nothing to undo");
+        }
     };
-    reader.readAsText(f);
-  });
 
-  // optional: restore autosave on init (if present)
-  try {
-    const ls = localStorage.getItem("fieldar_overlays");
-    if (ls) {
-      const parsed = JSON.parse(ls);
-      annotator.loadFromJSON(parsed);
-      log("Restored overlays from localStorage");
+    document.getElementById("redoBtn").onclick = function () {
+        if (redoStack.length > 0) {
+            undoStack.push(JSON.stringify(canvas.toJSON()));
+            const next = redoStack.pop();
+            canvas.loadFromJSON(next, () => canvas.renderAll());
+            log("Redo performed");
+        } else {
+            log("Nothing to redo");
+        }
+    };
+
+    // ----------------------------
+    // POLYGON DRAW TOGGLE
+    // ----------------------------
+    const polyBtn = document.createElement("button");
+    polyBtn.innerText = "Polygon Draw";
+    polyBtn.onclick = function () {
+        polygonMode = !polygonMode;
+        log(`Polygon Mode: ${polygonMode ? "ON" : "OFF"}`);
+    };
+    document.getElementById("toolbar").appendChild(polyBtn);
+
+    canvas.on("mouse:down", function (options) {
+        if (polygonMode && options.pointer) {
+            const pointer = canvas.getPointer(options.e);
+            const circle = new fabric.Circle({
+                left: pointer.x,
+                top: pointer.y,
+                radius: 5,
+                fill: pointArray.length === 0 ? "red" : "white",
+                originX: "center",
+                originY: "center",
+                selectable: false
+            });
+            const points = [pointer.x, pointer.y, pointer.x, pointer.y];
+            const line = new fabric.Line(points, {
+                stroke: "#999",
+                strokeWidth: 2,
+                selectable: false,
+                evented: false
+            });
+
+            if (!activeShape) {
+                activeShape = new fabric.Polygon([{ x: pointer.x, y: pointer.y }], {
+                    stroke: "#333",
+                    strokeWidth: 1,
+                    fill: "rgba(200,200,200,0.3)",
+                    selectable: false,
+                    evented: false
+                });
+                canvas.add(activeShape);
+            } else {
+                const shapePoints = activeShape.get("points");
+                shapePoints.push({ x: pointer.x, y: pointer.y });
+                activeShape.set({ points: shapePoints });
+            }
+
+            pointArray.push(circle);
+            lineArray.push(line);
+            canvas.add(circle);
+            canvas.add(line);
+            canvas.renderAll();
+        }
+    });
+};
+
+// ----------------------------
+// SAVE & LOAD STATE
+// ----------------------------
+function saveState() {
+    undoStack.push(JSON.stringify(canvas.toJSON()));
+    redoStack = [];
+    localStorage.setItem("fieldar_overlays", JSON.stringify(canvas.toJSON()));
+    log("State saved, undoStack length: " + undoStack.length);
+}
+
+function loadState() {
+    const saved = localStorage.getItem("fieldar_overlays");
+    if (saved) {
+        canvas.loadFromJSON(saved, () => canvas.renderAll());
+        log("Loaded saved overlays");
     }
-  } catch (e) {
-    /* ignore */
-  }
+}
 
-  log("fieldar.js ready");
-});
+// ----------------------------
+// IMPORT / EXPORT
+// ----------------------------
+const exportBtn = document.createElement("button");
+exportBtn.innerText = "Export";
+exportBtn.onclick = function () {
+    const json = JSON.stringify(canvas.toJSON());
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fieldar-overlays.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    log("Export complete, JSON size: " + json.length);
+};
+document.getElementById("toolbar").appendChild(exportBtn);
+
+const importBtn = document.createElement("button");
+importBtn.innerText = "Import";
+importBtn.onclick = function () {
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "application/json";
+    fileInput.onchange = function (e) {
+        const file = e.target.files[0];
+        if (!file) return error("No file selected");
+        const reader = new FileReader();
+        reader.onload = function (ev) {
+            try {
+                const data = JSON.parse(ev.target.result);
+                canvas.loadFromJSON(data, () => canvas.renderAll());
+                saveState();
+                log("Overlays imported: " + canvas.getObjects().length);
+            } catch (err) {
+                error("Failed to parse JSON");
+            }
+        };
+        reader.readAsText(file);
+    };
+    fileInput.click();
+};
+document.getElementById("toolbar").appendChild(importBtn);
