@@ -1,42 +1,167 @@
 <!-- FILE: index.html -->
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-<title>FieldAR Annotator</title>
+<title>FieldAR -- Full UI</title>
 
-<!-- Fabric.js CDN (must load before FieldAR scripts) -->
+<!-- Fabric.js (CDN) - must load before our scripts -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
 
-<!-- FieldAR core + UI -->
+<!-- Core + UI -->
 <script src="./fieldar-core.js"></script>
 <script src="./fieldar-ui.js" defer></script>
 
 <style>
-  :root{--bg:#111;--panel:#1e1e1e;--accent:#2b7bff;--muted:#bbb}
-  html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Arial,Helvetica,sans-serif}
-  #toolbar{position:fixed;top:8px;left:8px;z-index:9999;display:flex;gap:8px;align-items:center;background:rgba(0,0,0,0.4);padding:8px;border-radius:8px}
-  #toolbar button,#toolbar input[type=file]{background:var(--panel);border:1px solid #333;color:#fff;padding:8px;border-radius:6px;cursor:pointer}
-  #toolbar button:active{transform:translateY(1px)}
-  canvas { display:block; margin: 56px auto 0; box-shadow:0 2px 12px rgba(0,0,0,0.6) }
-  #debugConsole{position:fixed;bottom:0;left:0;width:100%;max-height:180px;overflow:auto;background:#000;color:#0f0;font-family:monospace;font-size:12px;padding:8px;box-sizing:border-box;opacity:0.95}
-  /* mobile-friendly */
-  @media (orientation:portrait){
-    #toolbar{flex-wrap:wrap;left:6px;right:6px}
-  }
+:root{
+  --bg:#0f0f12; --panel:#151618; --muted:#9aa; --accent:#2b7bff; --danger:#ff4d4d;
+  --toolbar-h:56px;
+}
+html,body{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Inter,system-ui,Arial,Helvetica,sans-serif}
+#app {
+  display:flex;
+  height:100vh;
+  width:100vw;
+  overflow:hidden;
+}
+
+/* LEFT SIDEBAR (overlay manager) */
+#sidebar {
+  width:220px;
+  min-width:160px;
+  background:linear-gradient(180deg,#111,#0c0c0d);
+  border-right:1px solid #0b0b0b;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+#sidebar .title { padding:12px 10px; font-weight:700; font-size:14px; color:var(--muted) }
+#overlayList { flex:1; overflow:auto; padding:8px; gap:8px; display:flex; flex-direction:column; }
+.overlay-item { display:flex; align-items:center; gap:8px; padding:8px; background:#0b0b0c; border-radius:8px; border:1px solid #111 }
+.overlay-thumb { width:44px; height:44px; object-fit:cover; border-radius:6px; background:#222 }
+.overlay-meta { flex:1; font-size:13px; color:#ddd }
+.overlay-controls button { margin-left:6px }
+
+/* MAIN AREA contains toolbar + canvas container */
+#main {
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+}
+
+/* TOP TOOLBAR */
+#toolbar {
+  height:var(--toolbar-h);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px;
+  background:linear-gradient(180deg, rgba(0,0,0,0.3), rgba(0,0,0,0.06));
+  border-bottom:1px solid rgba(255,255,255,0.02);
+  overflow:auto; /* scrollable when too many buttons */
+  -webkit-overflow-scrolling:touch;
+}
+.toolbar-group { display:flex; gap:6px; align-items:center; margin-right:6px }
+.toolbar button, .toolbar input[type=file], .toolbar select {
+  background:var(--panel); color:#fff; border:1px solid #222; padding:8px 10px; border-radius:8px; cursor:pointer;
+  font-size:14px;
+  white-space:nowrap;
+}
+.toolbar button.active { background:var(--accent); color:#fff; }
+
+/* Canvas container */
+#canvasWrap {
+  position:relative;
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  background:linear-gradient(180deg,#050506,#0a0a0b);
+}
+
+/* make canvas centered but allow panning via transforms */
+#annotatorCanvas { background: #000; display:block; }
+
+#debugConsole {
+  height:140px;
+  overflow:auto;
+  background:#000;
+  color:#0f0;
+  font-family:monospace;
+  font-size:12px;
+  padding:8px;
+  border-top:1px solid #111;
+}
+
+/* small screens adjust sidebar behavior */
+@media (max-width:900px){
+  #sidebar { display:none } /* default hide; user can toggle */
+  #toolbar { height:64px; }
+  #overlayList { padding:6px }
+}
 </style>
 </head>
 <body>
 
-<!-- Optional hidden starter image (FieldAR will still work w/out it) -->
-<img id="starter-image" src="./icons/Blue_GCPA-removebg-preview.png" alt="" style="display:none">
+<div id="app">
+  <div id="sidebar" aria-hidden="false">
+    <div class="title">Overlays</div>
+    <div id="overlayList"></div>
+    <div style="padding:8px;border-top:1px solid #101;display:flex;gap:6px">
+      <button id="toggleSidebarBtn">Hide Sidebar</button>
+      <button id="clearAllOverlaysBtn" style="background:var(--danger)">Clear All</button>
+    </div>
+  </div>
 
-<!-- Canvas (FieldAR will initialize this) -->
-<canvas id="annotatorCanvas"></canvas>
+  <div id="main">
+    <div id="toolbar" class="toolbar">
+      <div class="toolbar-group">
+        <label style="display:inline-flex;align-items:center;gap:8px">
+          <input id="machinePicker" type="file" accept="image/*" style="display:none">
+          <button id="btnMachine">Select Machine Image</button>
+        </label>
 
-<!-- Debug console appended by UI if missing -->
-<div id="debugConsole" aria-hidden="false"></div>
+        <label style="display:inline-flex;align-items:center;gap:8px">
+          <input id="overlayPicker" type="file" accept="image/*" style="display:none">
+          <button id="btnOverlay">Select Overlay Image</button>
+        </label>
+
+        <button id="btnAddText">Add Text</button>
+        <button id="btnRect">Add Rectangle</button>
+        <button id="btnArrow">Add Arrow</button>
+        <button id="btnPolygon">Polygon Draw</button>
+        <button id="btnFinalizePolygon">Finalize Polygon</button>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="btnMove">Move/Select</button>
+        <button id="btnDelete">Delete Selected</button>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="btnUndo">Undo</button>
+        <button id="btnRedo">Redo</button>
+      </div>
+
+      <div class="toolbar-group" style="margin-left:auto">
+        <button id="btnImport">Import JSON</button>
+        <input id="importFile" type="file" accept="application/json" style="display:none">
+        <button id="btnExport">Export JSON</button>
+        <button id="btnPNG">Save PNG</button>
+        <button id="btnToggleUI">Toggle UI</button>
+      </div>
+    </div>
+
+    <div id="canvasWrap">
+      <canvas id="annotatorCanvas"></canvas>
+    </div>
+
+    <div id="debugConsole" aria-live="polite"></div>
+  </div>
+</div>
 
 </body>
 </html>
