@@ -91,16 +91,18 @@
   }
   canvas { background:#333; display:block; max-width:100%; max-height:100%; }
 
-  #debugConsole {
-    height:140px;
-    background:#060606;
-    color:#0f0;
-    font-family:monospace;
-    font-size:12px;
-    overflow:auto;
-    padding:8px;
-    border-top:1px solid #111;
-  }
+ #debugConsole {
+  max-height: 60px;       /* ~3–4 visible lines */
+  min-height: 40px;       /* never collapse too small */
+  background:#060606;
+  color:#0f0;
+  font-family:monospace;
+  font-size:12px;
+  overflow-y:auto;        /* allows scrolling back through logs */
+  padding:6px;
+  box-sizing:border-box;
+  border-top:1px solid #111;
+}
 
   #floatingControls {
     position:absolute;
