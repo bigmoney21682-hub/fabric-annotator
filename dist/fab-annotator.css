@@ -49,3 +49,7 @@ html, body {
     overflow: hidden;      /* very important */
     touch-action: none;
 }
+
+#sidePanel {
+    display:none !important;
+}

@@ -72,18 +72,34 @@
 
   /* Side panel removed per your request -- will be replaced with overlay explorer later */
 
-  /* Toolbar */
-  #toolbar {
-    height:44px;
-    min-height:44px;
+  /* ===== TOP TOOLBAR REWORK ===== */
+#toolbar {
+    height: 34px;               /* 25% shorter */
+    min-height: 34px;
     display:flex;
     align-items:center;
-    gap:8px;
-    padding:6px;
+    gap:6px;
+    padding:4px;
     background:linear-gradient(180deg,#111,#0f0f0f);
     border-bottom:1px solid #222;
     z-index:60;
-  }
+    overflow-x:auto;            /* enable horizontal scroll */
+    overflow-y:hidden;
+    -webkit-overflow-scrolling: touch; /* smooth iOS scrolling */
+    white-space: nowrap;        /* keep buttons in one line */
+}
+
+/* Scrollbar hidden but functional */
+#toolbar::-webkit-scrollbar {
+    height: 0px;
+}
+
+/* Updated button style for shorter height */
+.btn.small {
+    padding:4px 6px;            /* smaller vertical size */
+    font-size:12px;
+    border-radius:6px;
+}
   .btn {
     background:var(--btn);
     color:var(--text);
